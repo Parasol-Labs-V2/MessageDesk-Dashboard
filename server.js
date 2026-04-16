@@ -40,6 +40,8 @@ function toMonthly(opp) {
   return val;
 }
 
+const PARASOL_PIPELINE_ID = 'pipe_1lXFBvtVQXtRgcjonTFr1Y';
+
 function a2pStage(raw) {
   if (!raw) return 0;
   const m = raw.match(/^(\d+)\./);
@@ -69,51 +71,25 @@ app.get('/api/dashboard', async (req, res) => {
 
     console.log('TOTAL BEFORE FILTER:', allLeads.length);
 
-    // Dump the raw opportunity objects from the first 5 leads
-    console.log('\n=== RAW OPP FIELDS FROM FIRST 5 LEADS ===');
-    allLeads.slice(0, 5).forEach((lead, i) => {
-      const opp = (lead.opportunities || [])[0];
-      console.log(`\n[Lead ${i}] ${lead.display_name}`);
-      if (!opp) {
-        console.log('  NO OPPORTUNITIES');
-      } else {
-        console.log('  ALL KEYS IN OPP:', Object.keys(opp).join(', '));
-        console.log('  status_label    :', JSON.stringify(opp.status_label));
-        console.log('  status_type     :', JSON.stringify(opp.status_type));
-        console.log('  status_id       :', JSON.stringify(opp.status_id));
-        // print every key whose name contains "status"
-        Object.entries(opp).forEach(([k, v]) => {
-          if (k.toLowerCase().includes('status')) {
-            console.log(`  ${k}: ${JSON.stringify(v)}`);
-          }
-        });
-      }
-    });
-    console.log('\n=== END RAW DUMP ===\n');
 
-    // ── Step 2: keep ONLY Parasol: leads ──
+    // ── Step 2: keep ONLY leads that have at least one Parasol pipeline opp ──
     const parasolLeads = allLeads.filter(lead => {
       const opps = lead.opportunities || [];
-      if (opps.length === 0) return false;
-      const status = opps[0].status_label || '';
-      return status.startsWith('Parasol:');
+      return opps.some(o => o.pipeline_id === PARASOL_PIPELINE_ID);
     });
 
     console.log('TOTAL AFTER PARASOL FILTER:', parasolLeads.length);
 
-    // ── Step 3: fetch ALL opportunities, then hard-filter to Parasol ──
+    // ── Step 3: fetch ALL opportunities, then hard-filter to Parasol pipeline ──
     const parasolLeadIdSet = new Set(parasolLeads.map(l => l.id));
 
     const allOpps = await fetchAllPages('/opportunity/', {
-      _fields: 'id,lead_id,lead_name,status_id,status_label,status_type,value,value_period,date_created,date_updated,date_won,date_lost,user_id,user_name,note,confidence,custom',
+      _fields: 'id,lead_id,lead_name,pipeline_id,status_id,status_label,status_type,value,value_period,date_created,date_updated,date_won,date_lost,user_id,user_name,note,confidence,custom',
     });
 
     console.log('TOTAL OPPS BEFORE FILTER:', allOpps.length);
 
-    const parasolOpps = allOpps.filter(o => {
-      const label = o.status_label || '';
-      return label.startsWith('Parasol:') && parasolLeadIdSet.has(o.lead_id);
-    });
+    const parasolOpps = allOpps.filter(o => o.pipeline_id === PARASOL_PIPELINE_ID);
 
     console.log('TOTAL OPPS AFTER FILTER:', parasolOpps.length);
 
