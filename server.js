@@ -196,7 +196,11 @@ const getPR  = l => (_fields.pr  ? (l.custom||{})[_fields.pr]  || '' : '');
 // ─── Opportunity-level custom field detection (Demo Date, Demo Status) ─────────
 const DEMO_STATUS_VALS = new Set(['Scheduled','Completed','No Show','No-Show','Cancelled']);
 
-let _oppFields = { demoDate: null, demoStatus: null, scanned: false };
+let _oppFields = {
+  demoStatus: 'cf_8BtzV3ggENtaiUj0nBV1NZ65v9g9IaN2XglzDk4rHEA',
+  demoDate:   'cf_nRCz1lxTf78cLTtm8QCi2RwWyEdYY6r96JDzwMnMRYa',
+  scanned: true,
+};
 
 // Return a flat map of all custom entries on an opp, handling two Close.io layouts:
 //   Layout A: opp.custom = { cf_xxx: value, ... }   (nested object)
@@ -214,53 +218,8 @@ function oppCustomEntries(opp) {
   return entries;
 }
 
-function detectOppFields(opps) {
-  if (_oppFields.scanned) return;
-
-  // Log full raw JSON of first opp so we can see the exact shape
-  if (opps.length > 0) {
-    console.log('\nFULL OPP OBJECT (first Parasol opp):');
-    console.log(JSON.stringify(opps[0], null, 2));
-  }
-
-  console.log('\n════ OPP CUSTOM KEY SCAN (first 5 Parasol opps) ════');
-  opps.slice(0, 5).forEach((opp, i) => {
-    console.log(`\n[${i}] ${opp.lead_name || 'unknown'} — status: ${opp.status_label}`);
-    // All top-level keys that contain "custom"
-    const customKeys = Object.keys(opp).filter(k => k.toLowerCase().includes('custom'));
-    if (!customKeys.length) { console.log('  ⚠ no keys containing "custom" on this opp'); }
-    customKeys.forEach(k => console.log(`  OPP CUSTOM: ${k} = ${JSON.stringify(opp[k])}`));
-    // Also print the flattened view
-    const flat = oppCustomEntries(opp);
-    if (flat.length) {
-      console.log('  Flattened custom entries:');
-      flat.forEach(([k, v]) => console.log(`    ${k}: ${JSON.stringify(v)}`));
-    }
-  });
-  console.log('\n════ END OPP CUSTOM KEY SCAN ════\n');
-
-  for (const opp of opps) {
-    for (const [k, v] of oppCustomEntries(opp)) {
-      if (!_oppFields.demoStatus && typeof v === 'string' && DEMO_STATUS_VALS.has(v)) {
-        _oppFields.demoStatus = k;
-      }
-      // Date fields: ISO date string or Close.io UTC epoch-ms int
-      if (!_oppFields.demoDate && (
-        (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) ||
-        (typeof v === 'number' && v > 1e12)
-      )) {
-        _oppFields.demoDate = k;
-      }
-    }
-    if (_oppFields.demoDate && _oppFields.demoStatus) break;
-  }
-
-  _oppFields.scanned = true;
-  console.log('Opp custom fields resolved →', _oppFields);
-  if (!_oppFields.demoStatus || !_oppFields.demoDate) {
-    console.log('⚠ One or both opp fields not auto-detected. Check the FULL OPP OBJECT above.');
-    console.log('  Then hardcode: _oppFields.demoDate = "cf_xxx"; _oppFields.demoStatus = "cf_yyy";');
-  }
+function detectOppFields() {
+  // Field IDs are hardcoded — no scan needed
 }
 
 function getOppCustomVal(opp, cfKey) {
@@ -322,11 +281,6 @@ async function fetchOppCustomFields() {
     skip += 100;
   }
   console.log(`\nFetched opp custom fields for ${all.length} Parasol opps`);
-  // Dump first opp to terminal so we can see field IDs
-  if (all.length > 0) {
-    console.log('\nFULL OPP OBJECT (from /opportunity/ endpoint):');
-    console.log(JSON.stringify(all[0], null, 2));
-  }
   return Object.fromEntries(all.map(o => [o.id, o.custom || {}]));
 }
 
@@ -372,22 +326,6 @@ function processLeads(allLeads, oppCustomMap = {}) {
     lead.opportunities.some(opp => opp.pipeline_id === PARASOL_PIPELINE_ID)
   );
   console.log(`Pipeline filter: ${allLeads.length} total → ${leads.length} Parasol`);
-
-  // Log first opportunity object so we can see all its keys (including custom)
-  if (leads.length > 0) {
-    const firstOpp = leads[0]?.opportunities?.find(o => o.pipeline_id === PARASOL_PIPELINE_ID);
-    if (firstOpp) {
-      console.log('\n════ FIRST PARASOL OPP — ALL KEYS ════');
-      Object.keys(firstOpp).filter(k => k.toLowerCase().includes('custom')).forEach(k => {
-        console.log(`OPP CUSTOM: ${k} = ${JSON.stringify(firstOpp[k])}`);
-      });
-      if (!Object.keys(firstOpp).some(k => k.toLowerCase().includes('custom'))) {
-        console.log('⚠ No custom keys found on opp. Opportunities may need direct fetch.');
-        console.log('  Keys present:', Object.keys(firstOpp).join(', '));
-      }
-      console.log('════ END FIRST OPP KEYS ════\n');
-    }
-  }
 
   detectFields(leads);
 
