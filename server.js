@@ -42,6 +42,26 @@ function toMonthly(opp) {
   return val; // monthly
 }
 
+const PARASOL_STATUSES = new Set([
+  'Parasol: Champion Confirmed',
+  'Parasol: Active Evaluation',
+  'Parasol: Meeting Scheduled',
+  'Parasol: Closed Won',
+  'Parasol: Closed Lost - No Showed',
+  'Parasol: Closed Lost - No Decision',
+  'Parasol: Closed Lost - Timing',
+  'Parasol: Closed Lost - Mass Texting',
+  'Parasol: Registration Pending',
+  'Parasol: Typeform Reg App Submitted',
+  'Parasol: Website Changes Needed',
+  'Parasol: Account Created',
+  'Parasol: Registration Approved',
+]);
+
+function isParasolStatus(label) {
+  return label.startsWith('Parasol:');
+}
+
 // Parse A2P status number prefix
 function a2pStage(raw) {
   if (!raw) return 0;
@@ -110,10 +130,16 @@ app.get('/api/dashboard', async (req, res) => {
       statusTypeMap[s.id] = s.type; // 'active', 'won', 'lost'
     }
 
+    const parasolLeadIds = new Set();
+
     for (const opp of opps) {
+      // Exclude all non-Parasol statuses (Sales:, etc.)
+      if (!isParasolStatus(opp.status_label || '')) continue;
+
       const monthly = toMonthly(opp);
       const lead = leadMap[opp.lead_id] || {};
       const custom = lead.custom || {};
+      parasolLeadIds.add(opp.lead_id);
 
       // Find A2P field
       let a2pStatus = '';
@@ -171,7 +197,7 @@ app.get('/api/dashboard', async (req, res) => {
     activeOpps.sort((a, b) => b.monthly_value - a.monthly_value);
 
     // KPI calculations
-    const totalLeads = leads.length;
+    const totalLeads = parasolLeadIds.size;
     const activeCount = activeOpps.length;
     const wonCount = wonOpps.length;
     const lostCount = lostOpps.length;
