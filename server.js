@@ -137,23 +137,45 @@ function scoreOpp(opp, lead) {
   return Math.min(s, 99);
 }
 
-// ─── Fetch all leads with progress tracking ────────────────────────────────────
+// ─── Fetch Parasol leads via search API (filters at API level) ─────────────────
+const SEARCH_QUERY = {
+  query: {
+    negate: false,
+    type: 'and',
+    queries: [{
+      negate: false,
+      object_type: 'opportunity',
+      type: 'object_type',
+      related_queries: [{
+        negate: false,
+        type: 'field_condition',
+        field: { field_name: 'pipeline_id', object_type: 'opportunity', type: 'regular_field' },
+        condition: { type: 'text', mode: 'exact_value', value: PARASOL_PIPELINE_ID },
+      }],
+    }],
+  },
+  _fields: 'id,display_name,opportunities,custom,date_created',
+  _limit: 100,
+};
+
 async function fetchAllLeads() {
-  let all = [], hasMore = true, cursor = null;
+  let all = [], cursor = null;
   fetchStatus.fetched = 0;
   fetchStatus.total   = 0;
   fetchStatus.pct     = 0;
 
-  while (hasMore) {
-    const base = `https://api.close.com/api/v1/lead/?_limit=100&_fields=id,display_name,opportunities,custom,date_created`;
-    const url  = cursor ? `${base}&_cursor=${encodeURIComponent(cursor)}` : base;
-    const res  = await fetch(url, { headers: authHeaders() });
-    if (!res.ok) throw new Error(`Close API ${res.status}: ${(await res.text()).slice(0,200)}`);
+  while (true) {
+    const body = cursor ? { ...SEARCH_QUERY, cursor } : { ...SEARCH_QUERY };
+    const res  = await fetch('https://api.close.com/api/v1/lead/search/', {
+      method:  'POST',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body:    JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`Close search API ${res.status}: ${(await res.text()).slice(0,200)}`);
     const data = await res.json();
 
     all = all.concat(data.data || []);
 
-    // Close.io returns total_results on the first page
     if (data.total_results && fetchStatus.total === 0) {
       fetchStatus.total = data.total_results;
     }
@@ -161,24 +183,23 @@ async function fetchAllLeads() {
     fetchStatus.pct     = fetchStatus.total > 0
       ? Math.round(fetchStatus.fetched / fetchStatus.total * 100) : 0;
 
-    hasMore = !!data.has_more;
-    cursor  = data.cursor || null;
-    process.stdout.write(`\rFetching leads: ${all.length}${fetchStatus.total ? '/' + fetchStatus.total : ''}   `);
+    process.stdout.write(`\rFetching Parasol leads: ${all.length}${fetchStatus.total ? '/' + fetchStatus.total : ''}   `);
+
+    if (!data.has_more) break;
+    cursor = data.cursor || null;
   }
-  console.log(`\nFetched ${all.length} leads total`);
+  console.log(`\nFetched ${all.length} Parasol leads (search API)`);
   return all;
 }
 
 // ─── Process + build dashboard ─────────────────────────────────────────────────
 function processLeads(allLeads) {
+  // allLeads already contains only Parasol pipeline leads (filtered at API level)
   detectFields(allLeads);
-  const parasolLeads = allLeads.filter(l =>
-    (l.opportunities||[]).some(o => o.pipeline_id === PARASOL_PIPELINE_ID)
-  );
-  console.log(`Leads: ${allLeads.length} total → ${parasolLeads.length} Parasol`);
+  console.log(`Processing ${allLeads.length} Parasol leads`);
 
   const deals = [];
-  for (const lead of parasolLeads) {
+  for (const lead of allLeads) {
     const opps = (lead.opportunities||[]).filter(o => o.pipeline_id === PARASOL_PIPELINE_ID);
     for (const opp of opps) {
       const stage    = STAGE_MAP[opp.status_label] || opp.status_label || 'Unknown';
