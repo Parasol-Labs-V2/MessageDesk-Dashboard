@@ -190,20 +190,65 @@ function detectFields(leads) {
   }
 }
 
-const getA2P  = l => (_fields.a2p ? (l.custom||{})[_fields.a2p] || '' : '');
-const getPR   = l => (_fields.pr  ? (l.custom||{})[_fields.pr]  || '' : '');
-const getDemo = l => {
-  if (!_fields.demo) return false;
-  const v = (l.custom||{})[_fields.demo];
-  return v === true || v === 'Yes' || v === '1';
-};
+const getA2P = l => (_fields.a2p ? (l.custom||{})[_fields.a2p] || '' : '');
+const getPR  = l => (_fields.pr  ? (l.custom||{})[_fields.pr]  || '' : '');
 
-function scoreOpp(opp, lead) {
+// ─── Opportunity-level custom field detection (Demo Date, Demo Status) ─────────
+const DEMO_STATUS_VALS = new Set(['Scheduled','Completed','No Show','No-Show','Cancelled']);
+
+let _oppFields = { demoDate: null, demoStatus: null, scanned: false };
+
+function detectOppFields(opps) {
+  if (_oppFields.scanned) return;
+
+  console.log('\n════ OPP CUSTOM FIELD DUMP (first 5 Parasol opps) ════');
+  opps.slice(0, 5).forEach((opp, i) => {
+    const c = opp.custom || {};
+    console.log(`\n[${i}] ${opp.lead_name || 'unknown'} — status: ${opp.status_label}`);
+    if (!Object.keys(c).length) { console.log('  (no custom fields on opp)'); return; }
+    Object.entries(c).forEach(([k, v]) => console.log(`  ${k}: ${JSON.stringify(v)}`));
+  });
+  console.log('\n════ END OPP CUSTOM FIELD DUMP ════\n');
+
+  for (const opp of opps) {
+    const c = opp.custom || {};
+    for (const [k, v] of Object.entries(c)) {
+      if (!_oppFields.demoStatus && typeof v === 'string' && DEMO_STATUS_VALS.has(v)) {
+        _oppFields.demoStatus = k;
+      }
+      // Date fields: ISO date string or Close.io UTC epoch-ms int
+      if (!_oppFields.demoDate && (
+        (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) ||
+        (typeof v === 'number' && v > 1e12)
+      )) {
+        _oppFields.demoDate = k;
+      }
+    }
+    if (_oppFields.demoDate && _oppFields.demoStatus) break;
+  }
+
+  _oppFields.scanned = true;
+  console.log('Opp custom fields resolved →', _oppFields);
+}
+
+function getOppDemoStatus(opp) {
+  return _oppFields.demoStatus ? ((opp.custom||{})[_oppFields.demoStatus] || '') : '';
+}
+function getOppDemoDate(opp) {
+  if (!_oppFields.demoDate) return null;
+  const v = (opp.custom||{})[_oppFields.demoDate];
+  if (!v) return null;
+  // Could be ISO string or epoch ms
+  const d = typeof v === 'number' ? new Date(v) : new Date(v);
+  return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0];
+}
+
+function scoreOpp(opp, lead, demoCompleted = false) {
   let s = 50;
   const stage = STAGE_MAP[opp.status_label] || '';
-  if (stage === 'Champion Confirmed')  s += 20;
+  if (stage === 'Champion Confirmed')     s += 20;
   else if (stage === 'Active Evaluation') s += 10;
-  if (getDemo(lead)) s += 15;
+  if (demoCompleted) s += 15;
   const a2p = getA2P(lead);
   if (a2p.startsWith('5.')) s += 10; else if (a2p.startsWith('4.')) s += 5;
   const m = toMonthly(opp);
@@ -271,23 +316,34 @@ function processLeads(allLeads) {
 
   detectFields(leads);
 
+  // Collect all Parasol opps for opp-field detection
+  const allParasolOpps = leads.flatMap(l =>
+    (l.opportunities||[]).filter(o => o.pipeline_id === PARASOL_PIPELINE_ID)
+  );
+  detectOppFields(allParasolOpps);
+
   const deals = [];
   for (const lead of leads) {
     const opps = (lead.opportunities||[]).filter(o => o.pipeline_id === PARASOL_PIPELINE_ID);
     for (const opp of opps) {
-      const stage    = STAGE_MAP[opp.status_label] || opp.status_label || 'Unknown';
-      const category = getCategory(stage);
-      const monthly  = toMonthly(opp);
-      const ageDays  = ACTIVE_STAGES.has(stage)
+      const stage       = STAGE_MAP[opp.status_label] || opp.status_label || 'Unknown';
+      const category    = getCategory(stage);
+      const monthly     = toMonthly(opp);
+      const ageDays     = ACTIVE_STAGES.has(stage)
         ? Math.floor((Date.now() - new Date(opp.date_created).getTime()) / 86400000) : null;
+      const demoStatus  = getOppDemoStatus(opp);
+      const demoDate    = getOppDemoDate(opp);
+      const demoCompleted = demoStatus === 'Completed';
       deals.push({
         id: opp.id, lead_id: lead.id,
         company:         lead.display_name || '',
         stage, category, monthly_value: monthly, age_days: ageDays,
-        score:           scoreOpp(opp, lead),
+        score:           scoreOpp(opp, lead, demoCompleted),
         a2p_status:      getA2P(lead),
         pipeline_review: getPR(lead),
-        demo_completed:  getDemo(lead),
+        demo_completed:  demoCompleted,
+        demo_status:     demoStatus,
+        demo_date:       demoDate,
         date_created:    opp.date_created || '',
       });
     }
@@ -403,25 +459,32 @@ async function fetchAndCache() {
   }
 }
 
-// ─── Meetings ─────────────────────────────────────────────────────────────────
-async function fetchMeetings() {
-  const now = new Date();
+// ─── Meetings: filter cached deals by Demo Date next week + Demo Status=Scheduled
+function getMeetingsFromCache() {
+  const now   = new Date();
   const toMon = now.getDay() === 0 ? 1 : 8 - now.getDay();
-  const mon = new Date(now); mon.setDate(now.getDate() + toMon); mon.setHours(0,0,0,0);
-  const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
-  const fmt = d => d.toISOString().split('T')[0];
+  const mon   = new Date(now); mon.setDate(now.getDate() + toMon); mon.setHours(0,0,0,0);
+  const sun   = new Date(mon); sun.setDate(mon.getDate() + 6);    sun.setHours(23,59,59,999);
+  const fmt   = d => d.toISOString().split('T')[0];
   const weekStart = fmt(mon), weekEnd = fmt(sun);
-  try {
-    const url = `https://api.close.com/api/v1/task/?due_date__gte=${weekStart}&due_date__lte=${weekEnd}&_limit=100`;
-    const res = await fetch(url, { headers: authHeaders() });
-    const data = await res.json();
-    const meetings = (data.data||[]).filter(t =>
-      (t._type||t.type||'').toLowerCase().includes('meeting') || t.object_type === 'meeting'
-    );
-    return { meetings, week_start: weekStart, week_end: weekEnd };
-  } catch (e) {
-    return { meetings: [], week_start: weekStart, week_end: weekEnd };
-  }
+
+  const deals = (_cache && _cache.deals) || [];
+  const meetings = deals.filter(d => {
+    if (!d.demo_date) return false;
+    if (d.demo_status !== 'Scheduled') return false;
+    return d.demo_date >= weekStart && d.demo_date <= weekEnd;
+  }).map(d => ({
+    lead_id:     d.lead_id,
+    lead_name:   d.company,
+    demo_date:   d.demo_date,
+    demo_status: d.demo_status,
+    monthly_value: d.monthly_value,
+    stage:       d.stage,
+    note:        d.pipeline_review || '',
+  }));
+
+  console.log(`Meetings next week (${weekStart}–${weekEnd}): ${meetings.length}`);
+  return { meetings, week_start: weekStart, week_end: weekEnd };
 }
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
@@ -475,8 +538,9 @@ app.get('/api/dashboard', async (req, res) => {
   return res.status(202).json({ status: 'fetching', fetched: 0, total: 0, pct: 0 });
 });
 
-app.get('/api/meetings', async (req, res) => {
-  try { res.json(await fetchMeetings()); }
+app.get('/api/meetings', (req, res) => {
+  if (!_cache) return res.status(202).json({ meetings: [], week_start: '', week_end: '', pending: true });
+  try { res.json(getMeetingsFromCache()); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
