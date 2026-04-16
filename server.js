@@ -1,238 +1,287 @@
 require('dotenv').config();
 const express = require('express');
-const axios = require('axios');
-const cors = require('cors');
-const path = require('path');
+const fetch   = require('node-fetch');
+const path    = require('path');
+const fs      = require('fs');
 
-const app = express();
-app.use(cors());
+const app    = express();
+const PORT   = process.env.PORT || 3000;
+const API_KEY = process.env.CLOSE_API_KEY || '';
+const PARASOL_PIPELINE_ID = 'pipe_1lXFBvtVQXtRgcjonTFr1Y';
+const SNAPSHOTS_DIR = path.join(__dirname, 'snapshots');
+const CACHE_TTL = 5 * 60 * 1000;
+
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+if (!fs.existsSync(SNAPSHOTS_DIR)) fs.mkdirSync(SNAPSHOTS_DIR, { recursive: true });
 
-const CLOSE_API_KEY = process.env.CLOSE_API_KEY;
-const CLOSE_BASE = 'https://api.close.com/api/v1';
+let _cache = null, _cacheTs = 0;
 
-const closeApi = axios.create({
-  baseURL: CLOSE_BASE,
-  auth: { username: CLOSE_API_KEY, password: '' },
-  timeout: 30000,
-});
+function authHeaders() {
+  return { Authorization: `Basic ${Buffer.from(API_KEY + ':').toString('base64')}` };
+}
 
-async function fetchAllPages(endpoint, params = {}) {
-  const results = [];
-  let skip = 0;
-  const limit = 100;
-  while (true) {
-    const res = await closeApi.get(endpoint, { params: { ...params, _limit: limit, _skip: skip } });
-    const data = res.data;
-    results.push(...(data.data || []));
-    if (!data.has_more) break;
-    skip += limit;
-  }
-  return results;
+// ─── Stage mapping ─────────────────────────────────────────────────────────────
+const STAGE_MAP = {
+  'Champion Confirmed':         'Champion Confirmed',
+  'Active Evaluation':          'Active Evaluation',
+  'Meeting Scheduled':          'Meeting Scheduled',
+  'Closed Won':                 'Closed Won',
+  'Closed Lost - No Showed':    'No Showed',
+  'Closed Lost - No Decision':  'No Decision',
+  'Closed Lost - Timing':       'Timing',
+  'Closed Lost - Mass Texting': 'Mass Texting',
+  'Registration Pending':       'Registration Pending',
+  'Typeform Reg App Submitted': 'Typeform Reg App Submitted',
+  'Website Changes Needed':     'Website Changes Needed',
+  'Account Created':            'Account Created',
+  'MQLs':                       'MQLs',
+  'Registration Approved':      'Registration Approved',
+};
+
+const ACTIVE_STAGES     = new Set(['Champion Confirmed','Active Evaluation','Meeting Scheduled','MQLs']);
+const ONBOARDING_STAGES = new Set(['Registration Pending','Typeform Reg App Submitted','Website Changes Needed','Account Created','Registration Approved']);
+
+function getCategory(stage) {
+  if (ACTIVE_STAGES.has(stage))     return 'active';
+  if (ONBOARDING_STAGES.has(stage)) return 'onboarding';
+  if (stage === 'Closed Won')       return 'won';
+  return 'lost';
 }
 
 function toMonthly(opp) {
-  const val = (parseFloat(opp.value) || 0) / 100; // Close.io stores values in cents
+  const dollars = (parseFloat(opp.value) || 0) / 100;
   const freq = (opp.value_period || '').toLowerCase();
-  if (freq === 'annual') return val / 12;
+  if (freq === 'annual')                        return dollars / 12;
   if (freq === 'one_time' || freq === 'one-time') return 0;
-  return val;
+  return dollars;
 }
 
-const PARASOL_PIPELINE_ID = 'pipe_1lXFBvtVQXtRgcjonTFr1Y';
+// ─── Custom field auto-detection ───────────────────────────────────────────────
+let _fields = { a2p: null, pr: null, demo: null, scanned: false };
 
-function a2pStage(raw) {
-  if (!raw) return 0;
-  const m = raw.match(/^(\d+)\./);
-  return m ? parseInt(m[1]) : 0;
+function detectFields(leads) {
+  if (_fields.scanned) return;
+  for (const lead of leads) {
+    const c = lead.custom || {};
+    for (const [k, v] of Object.entries(c)) {
+      if (!_fields.a2p && typeof v === 'string' && /^\d+\.\s+/i.test(v)) _fields.a2p = k;
+      if (!_fields.demo && typeof v === 'boolean') _fields.demo = k;
+    }
+    if (_fields.a2p) break;
+  }
+  for (const lead of leads) {
+    const c = lead.custom || {};
+    for (const [k, v] of Object.entries(c)) {
+      if (k !== _fields.a2p && !_fields.pr && typeof v === 'string' && v.length > 30) { _fields.pr = k; break; }
+    }
+    if (_fields.pr) break;
+  }
+  _fields.scanned = true;
+  console.log('Custom fields →', _fields);
 }
 
-// GET /api/debug - inspect raw lead + opportunity fields
-app.get('/api/debug', async (req, res) => {
+const getA2P  = l => (_fields.a2p  ? (l.custom||{})[_fields.a2p]  || '' : '');
+const getPR   = l => (_fields.pr   ? (l.custom||{})[_fields.pr]   || '' : '');
+const getDemo = l => {
+  if (!_fields.demo) return false;
+  const v = (l.custom||{})[_fields.demo];
+  return v === true || v === 'Yes' || v === '1';
+};
+
+// ─── Deal scoring ──────────────────────────────────────────────────────────────
+function scoreOpp(opp, lead) {
+  let s = 50;
+  const stage = STAGE_MAP[opp.status_label] || '';
+  if (stage === 'Champion Confirmed') s += 20;
+  else if (stage === 'Active Evaluation') s += 10;
+  if (getDemo(lead)) s += 15;
+  const a2p = getA2P(lead);
+  if (a2p.startsWith('5.') || a2p.includes('. ') && a2p[0] === '5') s += 10;
+  else if (a2p.startsWith('4.') || a2p.includes('. ') && a2p[0] === '4') s += 5;
+  const m = toMonthly(opp);
+  if (m >= 200) s += 10; else if (m >= 100) s += 5;
+  return Math.min(s, 99);
+}
+
+// ─── Close.io fetch helpers ────────────────────────────────────────────────────
+async function fetchAllLeads() {
+  let all = [], hasMore = true, cursor = null;
+  while (hasMore) {
+    const base = 'https://api.close.com/api/v1/lead/?_limit=100&_fields=id,display_name,opportunities,custom,date_created';
+    const url  = cursor ? `${base}&_cursor=${encodeURIComponent(cursor)}` : base;
+    const res  = await fetch(url, { headers: authHeaders() });
+    if (!res.ok) throw new Error(`Close API ${res.status}: ${(await res.text()).slice(0,200)}`);
+    const data = await res.json();
+    all = all.concat(data.data || []);
+    hasMore = !!data.has_more;
+    cursor  = data.cursor || null;
+  }
+  return all;
+}
+
+async function fetchMeetings() {
+  const now = new Date();
+  const toMon = now.getDay() === 0 ? 1 : 8 - now.getDay();
+  const mon = new Date(now); mon.setDate(now.getDate() + toMon); mon.setHours(0,0,0,0);
+  const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+  const fmt = d => d.toISOString().split('T')[0];
+  const weekStart = fmt(mon), weekEnd = fmt(sun);
   try {
-    const r = await closeApi.get('/lead/', {
-      params: { _limit: 3, _fields: 'id,display_name,opportunities' },
-    });
-    res.json(r.data.data || []);
+    const url = `https://api.close.com/api/v1/task/?due_date__gte=${weekStart}&due_date__lte=${weekEnd}&_limit=100`;
+    const res = await fetch(url, { headers: authHeaders() });
+    const data = await res.json();
+    const meetings = (data.data || []).filter(t =>
+      (t._type || t.type || '').toLowerCase().includes('meeting') || t.object_type === 'meeting'
+    );
+    return { meetings, week_start: weekStart, week_end: weekEnd };
   } catch (e) {
+    return { meetings: [], week_start: weekStart, week_end: weekEnd };
+  }
+}
+
+// ─── Process leads → deals ─────────────────────────────────────────────────────
+function processLeads(allLeads) {
+  detectFields(allLeads);
+  const parasolLeads = allLeads.filter(l => (l.opportunities||[]).some(o => o.pipeline_id === PARASOL_PIPELINE_ID));
+  console.log(`Leads: ${allLeads.length} total → ${parasolLeads.length} Parasol`);
+
+  const deals = [];
+  for (const lead of parasolLeads) {
+    const opps = (lead.opportunities||[]).filter(o => o.pipeline_id === PARASOL_PIPELINE_ID);
+    for (const opp of opps) {
+      const stage    = STAGE_MAP[opp.status_label] || opp.status_label || 'Unknown';
+      const category = getCategory(stage);
+      const monthly  = toMonthly(opp);
+      const ageDays  = ACTIVE_STAGES.has(stage)
+        ? Math.floor((Date.now() - new Date(opp.date_created).getTime()) / 86400000) : null;
+      deals.push({
+        id: opp.id, lead_id: lead.id,
+        company: lead.display_name || '',
+        stage, category, monthly_value: monthly, age_days: ageDays,
+        score: scoreOpp(opp, lead),
+        a2p_status:     getA2P(lead),
+        pipeline_review: getPR(lead),
+        demo_completed:  getDemo(lead),
+        date_created:   opp.date_created || '',
+      });
+    }
+  }
+  return deals;
+}
+
+// ─── Snapshot helpers ──────────────────────────────────────────────────────────
+function saveSnapshot(data) {
+  const today = new Date().toISOString().split('T')[0];
+  const file  = path.join(SNAPSHOTS_DIR, `${today}.json`);
+  if (fs.existsSync(file)) return;
+  fs.writeFileSync(file, JSON.stringify({
+    date: today, kpis: data.kpis,
+    deals: data.deals.map(d => ({ id:d.id, company:d.company, stage:d.stage, category:d.category, monthly_value:d.monthly_value })),
+  }, null, 2));
+  console.log('Snapshot saved:', file);
+}
+
+function loadLatestSnapshot() {
+  const today = new Date().toISOString().split('T')[0];
+  try {
+    const files = fs.readdirSync(SNAPSHOTS_DIR)
+      .filter(f => f.endsWith('.json') && f < `${today}.json`)
+      .sort().reverse();
+    return files.length ? JSON.parse(fs.readFileSync(path.join(SNAPSHOTS_DIR, files[0]), 'utf8')) : null;
+  } catch { return null; }
+}
+
+// ─── Build full dashboard payload ─────────────────────────────────────────────
+function buildDashboard(deals, snapshot) {
+  const active     = deals.filter(d => d.category === 'active');
+  const onboarding = deals.filter(d => d.category === 'onboarding');
+  const won        = deals.filter(d => d.category === 'won');
+  const lost       = deals.filter(d => d.category === 'lost');
+  const champion   = deals.filter(d => d.stage === 'Champion Confirmed');
+  const sum = arr => arr.reduce((s,d) => s + d.monthly_value, 0);
+
+  // Per-stage breakdown
+  const byStage = {};
+  for (const d of deals) {
+    if (!byStage[d.stage]) byStage[d.stage] = { count:0, mrr:0 };
+    byStage[d.stage].count++; byStage[d.stage].mrr += d.monthly_value;
+  }
+
+  // Monthly deal creation histogram (from Sep 2025 onward)
+  const newByMonth = {};
+  for (const d of deals) {
+    if (!d.date_created) continue;
+    const dt = new Date(d.date_created);
+    if (dt < new Date('2025-09-01')) continue;
+    const key = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`;
+    newByMonth[key] = (newByMonth[key]||0) + 1;
+  }
+
+  // WoW change computation
+  let changes = null;
+  if (snapshot) {
+    const prevById = Object.fromEntries((snapshot.deals||[]).map(d => [d.id, d]));
+    const currById = Object.fromEntries(deals.map(d => [d.id, d]));
+    changes = {
+      prev_date:    snapshot.date,
+      prev_kpis:    snapshot.kpis,
+      new_count:    deals.filter(d => !prevById[d.id]).length,
+      removed_count: (snapshot.deals||[]).filter(d => !currById[d.id]).length,
+      new_won:      deals.filter(d => d.category==='won' && prevById[d.id] && prevById[d.id].category!=='won'),
+      stage_changes: deals
+        .filter(d => prevById[d.id] && prevById[d.id].stage !== d.stage)
+        .map(d => ({ ...d, prev_stage: prevById[d.id].stage })),
+    };
+  }
+
+  const kpis = {
+    total:            deals.length,
+    active_count:     active.length,
+    active_mrr:       sum(active),
+    onboarding_count: onboarding.length,
+    onboarding_mrr:   sum(onboarding),
+    won_count:        won.length,
+    won_mrr:          sum(won),
+    lost_count:       lost.length,
+    champion_count:   champion.length,
+    champion_mrr:     sum(champion),
+  };
+
+  return {
+    kpis,
+    deals: deals.sort((a,b) => b.monthly_value - a.monthly_value),
+    by_stage: byStage, new_by_month: newByMonth, changes,
+    pipeline_review: deals.filter(d => d.pipeline_review && d.pipeline_review.length > 5)
+                          .sort((a,b) => b.monthly_value - a.monthly_value),
+    updated_at: new Date().toISOString(),
+  };
+}
+
+// ─── Routes ───────────────────────────────────────────────────────────────────
+app.get('/api/dashboard', async (req, res) => {
+  const now = Date.now(), force = req.query.refresh === '1';
+  if (_cache && !force && now - _cacheTs < CACHE_TTL) return res.json({ ..._cache, cached: true });
+  try {
+    const allLeads = await fetchAllLeads();
+    const deals    = processLeads(allLeads);
+    const snapshot = loadLatestSnapshot();
+    const data     = buildDashboard(deals, snapshot);
+    saveSnapshot(data);
+    _cache = data; _cacheTs = now;
+    res.json(data);
+  } catch (e) {
+    console.error('Dashboard error:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
 
-// GET /api/dashboard - main data endpoint
-app.get('/api/dashboard', async (req, res) => {
-  try {
-    // ── Step 1: fetch ALL leads that have at least one opportunity ──
-    const allLeads = await fetchAllPages('/lead/', {
-      query: 'has:opportunities',
-      _fields: 'id,display_name,opportunities,custom,contacts,date_created',
-    });
-
-    console.log('TOTAL BEFORE FILTER:', allLeads.length);
-
-
-    // ── Step 2: keep ONLY leads that have at least one Parasol pipeline opp ──
-    const parasolLeads = allLeads.filter(lead => {
-      const opps = lead.opportunities || [];
-      return opps.some(o => o.pipeline_id === PARASOL_PIPELINE_ID);
-    });
-
-    console.log('TOTAL AFTER PARASOL FILTER:', parasolLeads.length);
-
-    // ── Step 3: fetch ALL opportunities, then hard-filter to Parasol pipeline ──
-    const parasolLeadIdSet = new Set(parasolLeads.map(l => l.id));
-
-    const allOpps = await fetchAllPages('/opportunity/', {
-      _fields: 'id,lead_id,lead_name,pipeline_id,status_id,status_label,status_type,value,value_period,date_created,date_updated,date_won,date_lost,user_id,user_name,note,confidence,custom',
-    });
-
-    console.log('TOTAL OPPS BEFORE FILTER:', allOpps.length);
-
-    const parasolOpps = allOpps.filter(o => o.pipeline_id === PARASOL_PIPELINE_ID);
-
-    console.log('TOTAL OPPS AFTER FILTER:', parasolOpps.length);
-
-    // ── Step 4: fetch statuses ──
-    const statusRes = await closeApi.get('/status/opportunity/');
-    const statuses = statusRes.data.data || [];
-
-    const statusTypeMap = {};
-    for (const s of statuses) {
-      statusTypeMap[s.id] = s.type;
-    }
-
-    // ── Step 5: build lead map from parasolLeads only ──
-    const leadMap = {};
-    for (const lead of parasolLeads) {
-      leadMap[lead.id] = lead;
-    }
-
-    // Detect custom field IDs from parasolLeads
-    let a2pFieldId = null;
-    let pipelineFieldId = null;
-    for (const lead of parasolLeads) {
-      const custom = lead.custom || {};
-      for (const [k, v] of Object.entries(custom)) {
-        if (!a2pFieldId && typeof v === 'string' && v.match(/^\d+\.\s+/)) {
-          a2pFieldId = k;
-        }
-      }
-      if (a2pFieldId) break;
-    }
-
-    // ── Step 6: process parasolOpps only ──
-    const activeOpps = [];
-    const wonOpps = [];
-    const lostOpps = [];
-    let totalPipelineValue = 0;
-    let totalWonMRR = 0;
-
-    for (const opp of parasolOpps) {
-      const monthly = toMonthly(opp);
-      const lead = leadMap[opp.lead_id] || {};
-      const custom = lead.custom || {};
-
-      const a2pStatus = a2pFieldId ? (custom[a2pFieldId] || '') : '';
-      let pipelineReview = '';
-      if (!pipelineFieldId) {
-        for (const [k, v] of Object.entries(custom)) {
-          if (k !== a2pFieldId && typeof v === 'string' && v.length > 20) {
-            pipelineFieldId = k;
-            pipelineReview = v;
-            break;
-          }
-        }
-      } else {
-        pipelineReview = custom[pipelineFieldId] || '';
-      }
-
-      const created = new Date(opp.date_created);
-      const ageDays = Math.floor((Date.now() - created.getTime()) / 86400000);
-
-      const enriched = {
-        ...opp,
-        monthly_value: monthly,
-        age_days: ageDays,
-        a2p_status: a2pStatus,
-        a2p_stage: a2pStage(a2pStatus),
-        pipeline_review: pipelineReview,
-        lead_display_name: opp.lead_name || lead.display_name || '',
-      };
-
-      const sType = statusTypeMap[opp.status_id] || opp.status_type || '';
-      if (sType === 'won') {
-        wonOpps.push(enriched);
-        totalWonMRR += monthly;
-      } else if (sType === 'lost') {
-        lostOpps.push(enriched);
-      } else {
-        activeOpps.push(enriched);
-        totalPipelineValue += monthly;
-      }
-    }
-
-    activeOpps.sort((a, b) => b.monthly_value - a.monthly_value);
-
-    const totalLeads = parasolLeads.length;
-    const activeCount = activeOpps.length;
-    const wonCount = wonOpps.length;
-    const lostCount = lostOpps.length;
-    const closedTotal = wonCount + lostCount;
-    const winRate = closedTotal > 0 ? Math.round((wonCount / closedTotal) * 100) : 0;
-    const avgDealSize = wonCount > 0 ? Math.round(totalWonMRR / wonCount) : 0;
-
-    const a2pBreakdown = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
-    for (const o of activeOpps) {
-      const stage = o.a2p_stage;
-      a2pBreakdown[stage] = (a2pBreakdown[stage] || 0) + 1;
-    }
-
-    const pipelineByStatus = {};
-    for (const o of activeOpps) {
-      const label = o.status_label || 'Unknown';
-      if (!pipelineByStatus[label]) pipelineByStatus[label] = { count: 0, value: 0 };
-      pipelineByStatus[label].count++;
-      pipelineByStatus[label].value += o.monthly_value;
-    }
-
-    const mrrByMonth = {};
-    for (const o of wonOpps) {
-      const d = new Date(o.date_won || o.date_updated);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      mrrByMonth[key] = (mrrByMonth[key] || 0) + o.monthly_value;
-    }
-
-    res.json({
-      kpis: {
-        total_leads: totalLeads,
-        active_opportunities: activeCount,
-        pipeline_mrr: Math.round(totalPipelineValue),
-        won_mrr: Math.round(totalWonMRR),
-        win_rate: winRate,
-        avg_deal_size: avgDealSize,
-        won_count: wonCount,
-        lost_count: lostCount,
-        closed_total: closedTotal,
-      },
-      active_opportunities: activeOpps,
-      won_opportunities: wonOpps.slice(0, 50),
-      lost_opportunities: lostOpps.slice(0, 50),
-      pipeline_by_status: pipelineByStatus,
-      mrr_by_month: mrrByMonth,
-      a2p_breakdown: a2pBreakdown,
-      statuses,
-      field_ids: { a2p: a2pFieldId, pipeline_review: pipelineFieldId },
-    });
-  } catch (e) {
-    console.error('Dashboard error:', e.response?.data || e.message);
-    res.status(500).json({ error: e.message, detail: e.response?.data });
-  }
+app.get('/api/meetings', async (req, res) => {
+  try { res.json(await fetchMeetings()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 if (require.main === module) {
-  const PORT = process.env.PORT || 3000;
-  app.listen(PORT, () => console.log(`MessageDesk Dashboard running on http://localhost:${PORT}`));
+  app.listen(PORT, () => console.log(`MessageDesk Dashboard → http://localhost:${PORT}`));
 }
-
 module.exports = app;

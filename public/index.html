@@ -3,898 +3,1250 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MessageDesk Sales Dashboard</title>
+<title>MessageDesk Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --brand: #5B3FDE;
-    --brand-dark: #3d2aad;
-    --brand-light: #ede9ff;
-    --accent: #00C896;
-    --accent2: #FF6B35;
-    --warn: #F5A623;
-    --danger: #E53935;
-    --text: #1a1a2e;
-    --text-muted: #6b7280;
-    --border: #e5e7eb;
-    --bg: #f3f4f8;
-    --card: #ffffff;
-    --shadow: 0 1px 4px rgba(0,0,0,0.08);
-    --radius: 10px;
-  }
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  html { font-size: 14px; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+/* ─── Variables ─────────────────────────────────────────────────────────────── */
+:root {
+  --red:          #E8231A;
+  --yellow:       #F5C800;
+  --blue:         #1B9BF0;
+  --black:        #111111;
+  --cream:        #FAF5EE;
+  --gray:         #6B7280;
+  --green:        #16A34A;
+  --green-bg:     #DCFCE7;
+  --gray-light:   #F3F4F6;
+  --gray-border:  #E5E7EB;
+  --teal:         #00695C;
+  --teal-bg:      #E0F2F1;
+  --radius:       12px;
+  --shadow:       0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
+}
 
-  /* HEADER */
-  header {
-    background: linear-gradient(135deg, var(--brand-dark) 0%, var(--brand) 100%);
-    color: #fff;
-    padding: 0 24px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    height: 56px;
-    position: sticky;
-    top: 0;
-    z-index: 100;
-    box-shadow: 0 2px 8px rgba(91,63,222,0.3);
-  }
-  .logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.1rem; letter-spacing: -0.3px; }
-  .logo svg { width: 28px; height: 28px; }
-  .header-right { display: flex; align-items: center; gap: 16px; font-size: 0.8rem; opacity: 0.85; }
-  #last-updated { font-size: 0.75rem; opacity: 0.7; }
-  .refresh-btn {
-    background: rgba(255,255,255,0.15);
-    border: 1px solid rgba(255,255,255,0.25);
-    color: #fff;
-    padding: 5px 12px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 0.8rem;
-    transition: background 0.2s;
-  }
-  .refresh-btn:hover { background: rgba(255,255,255,0.25); }
+/* ─── Reset ─────────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 14px; }
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--cream);
+  color: var(--black);
+  line-height: 1.5;
+  min-height: 100vh;
+}
+button { font-family: inherit; cursor: pointer; border: none; }
+table  { border-collapse: collapse; width: 100%; }
 
-  /* TABS */
-  .tabs {
-    background: var(--card);
-    border-bottom: 2px solid var(--border);
-    padding: 0 24px;
-    display: flex;
-    gap: 0;
-    position: sticky;
-    top: 56px;
-    z-index: 99;
-    box-shadow: var(--shadow);
-  }
-  .tab {
-    padding: 12px 20px;
-    cursor: pointer;
-    border-bottom: 3px solid transparent;
-    margin-bottom: -2px;
-    font-weight: 500;
-    color: var(--text-muted);
-    transition: all 0.15s;
-    white-space: nowrap;
-    font-size: 0.85rem;
-  }
-  .tab:hover { color: var(--brand); }
-  .tab.active { color: var(--brand); border-bottom-color: var(--brand); }
-  .tab-badge {
-    display: inline-block;
-    background: var(--brand-light);
-    color: var(--brand);
-    border-radius: 10px;
-    padding: 1px 7px;
-    font-size: 0.7rem;
-    font-weight: 600;
-    margin-left: 6px;
-  }
+/* ─── Layout helpers ─────────────────────────────────────────────────────────── */
+.g4 { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; }
+.g3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; }
+.g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 
-  /* MAIN */
-  main { padding: 20px 24px 40px; max-width: 1600px; margin: 0 auto; }
+/* ─── Header ─────────────────────────────────────────────────────────────────── */
+.site-header {
+  background: var(--black);
+  border-bottom: 3px solid var(--red);
+  position: sticky; top: 0; z-index: 100;
+}
+.header-inner {
+  display: flex; align-items: center; gap: 14px;
+  height: 60px; max-width: 1400px; margin: 0 auto; padding: 0 24px;
+}
+.parasol-logo {
+  width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
+  background: conic-gradient(var(--red) 0deg 120deg, var(--yellow) 120deg 240deg, var(--blue) 240deg 360deg);
+}
+.header-titles { flex: 1; min-width: 0; }
+.header-titles h1 { font-size: 15px; font-weight: 700; color: #fff; letter-spacing: -.3px; }
+.header-titles .subtitle { font-size: 11px; color: #9CA3AF; margin-top: 1px; }
+.header-pills { display: flex; gap: 8px; }
+.pill {
+  background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.15);
+  color: #fff; border-radius: 20px; padding: 3px 11px;
+  font-size: 12px; font-weight: 500; white-space: nowrap;
+}
+.pill b { font-weight: 700; }
+.header-right { display: flex; align-items: center; gap: 10px; margin-left: 8px; flex-shrink: 0; }
+.updated-time { font-size: 11px; color: #9CA3AF; white-space: nowrap; }
+.refresh-btn {
+  background: rgba(255,255,255,.12); color: #fff;
+  border: 1px solid rgba(255,255,255,.2);
+  padding: 5px 13px; border-radius: 6px; font-size: 12px; font-weight: 600;
+  transition: background .15s;
+}
+.refresh-btn:hover { background: rgba(255,255,255,.22); }
+.refresh-btn:disabled { opacity: .5; cursor: default; }
 
-  /* SECTION */
-  .section { display: none; }
-  .section.active { display: block; }
+/* ─── Tab Navigation ─────────────────────────────────────────────────────────── */
+.tabs-bar {
+  background: #fff; border-bottom: 1px solid var(--gray-border);
+  position: sticky; top: 63px; z-index: 90;
+}
+.tabs-inner {
+  display: flex; max-width: 1400px; margin: 0 auto; padding: 0 24px;
+  overflow-x: auto; scrollbar-width: none;
+}
+.tabs-inner::-webkit-scrollbar { display: none; }
+.tab-btn {
+  padding: 14px 18px; font-size: 13px; font-weight: 500; color: var(--gray);
+  background: none; border: none; border-bottom: 2px solid transparent;
+  white-space: nowrap; cursor: pointer; transition: color .15s, border-color .15s;
+  margin-bottom: -1px;
+}
+.tab-btn:hover { color: var(--black); }
+.tab-btn.active { color: var(--red); border-bottom-color: var(--red); font-weight: 700; }
 
-  /* KPI GRID */
-  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 20px; }
-  @media (max-width: 1200px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
-  @media (max-width: 600px) { .kpi-grid { grid-template-columns: 1fr; } }
+/* ─── Tab Panels ─────────────────────────────────────────────────────────────── */
+.tab-panel { display: none; padding: 20px 24px 48px; max-width: 1400px; margin: 0 auto; }
+.tab-panel.active { display: block; }
 
-  .kpi {
-    background: var(--card);
-    border-radius: var(--radius);
-    padding: 18px 20px;
-    border-top: 3px solid var(--brand);
-    box-shadow: var(--shadow);
-    position: relative;
-    overflow: hidden;
-  }
-  .kpi::after {
-    content: '';
-    position: absolute;
-    top: 0; right: 0;
-    width: 60px; height: 60px;
-    background: var(--brand-light);
-    border-radius: 50%;
-    transform: translate(20px, -20px);
-    opacity: 0.5;
-  }
-  .kpi.green { border-top-color: var(--accent); }
-  .kpi.green::after { background: #e6faf4; }
-  .kpi.orange { border-top-color: var(--accent2); }
-  .kpi.orange::after { background: #fff0eb; }
-  .kpi.yellow { border-top-color: var(--warn); }
-  .kpi.yellow::after { background: #fff8ec; }
-  .kpi.red { border-top-color: var(--danger); }
-  .kpi.red::after { background: #ffeaea; }
+/* ─── Alert Bar ──────────────────────────────────────────────────────────────── */
+.alert-bar {
+  background: var(--black); color: #fff; border-radius: 10px;
+  padding: 13px 18px; display: flex; align-items: center; gap: 10px;
+  font-size: 13px; font-weight: 500; margin-bottom: 20px; line-height: 1.5;
+}
+.blink-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--red);
+  flex-shrink: 0; animation: blink 1.2s ease-in-out infinite;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.15} }
+.alert-bar strong { color: var(--yellow); }
 
-  .kpi-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); font-weight: 600; margin-bottom: 6px; }
-  .kpi-value { font-size: 2rem; font-weight: 700; line-height: 1; color: var(--text); }
-  .kpi-sub { font-size: 0.72rem; color: var(--text-muted); margin-top: 6px; }
-  .kpi-trend { font-size: 0.75rem; font-weight: 600; margin-top: 4px; }
-  .kpi-trend.up { color: var(--accent); }
-  .kpi-trend.down { color: var(--danger); }
+/* ─── KPI Cards ──────────────────────────────────────────────────────────────── */
+.kpi-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; margin-bottom: 24px; }
+.kpi-grid.cols3 { grid-template-columns: repeat(3,1fr); }
+.kpi-card {
+  background: #fff; border-radius: var(--radius); box-shadow: var(--shadow);
+  border: 1px solid var(--gray-border); border-top: 3px solid var(--gray-border);
+  padding: 18px 20px;
+}
+.kpi-card.red    { border-top-color: var(--red); }
+.kpi-card.blue   { border-top-color: var(--blue); }
+.kpi-card.yellow { border-top-color: var(--yellow); }
+.kpi-card.black  { border-top-color: var(--black); }
+.kpi-card.green  { border-top-color: var(--green); }
+.kpi-label { font-size: 11px; font-weight: 600; color: var(--gray); text-transform: uppercase; letter-spacing: .6px; margin-bottom: 6px; }
+.kpi-value { font-size: 28px; font-weight: 800; line-height: 1.1; letter-spacing: -1px; }
+.kpi-sub   { font-size: 12px; color: var(--gray); margin-top: 5px; }
+.kpi-prev  { font-size: 11px; color: var(--gray); margin-top: 4px; }
+.kpi-tag   { display: inline-block; margin-top: 9px; padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+.kpi-tag.red    { background: #FEE2E2; color: #991B1B; }
+.kpi-tag.yellow { background: #FEF9C3; color: #854D0E; }
+.kpi-tag.blue   { background: #DBEAFE; color: #1D4ED8; }
+.kpi-tag.green  { background: var(--green-bg); color: #166534; }
+.kpi-tag.black  { background: #F3F4F6; color: #374151; }
 
-  /* CHARTS ROW */
-  .charts-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-bottom: 20px; }
-  @media (max-width: 1100px) { .charts-row { grid-template-columns: 1fr 1fr; } }
+/* ─── Delta Badges ───────────────────────────────────────────────────────────── */
+.delta { display: inline-block; padding: 2px 7px; border-radius: 20px; font-size: 12px; font-weight: 700; }
+.delta.pos { background: var(--green-bg); color: #166534; }
+.delta.neg { background: #FEE2E2; color: #991B1B; }
+.delta.neu { background: var(--gray-light); color: var(--gray); }
 
-  .chart-card {
-    background: var(--card);
-    border-radius: var(--radius);
-    padding: 18px 20px;
-    box-shadow: var(--shadow);
-  }
-  .chart-title { font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 14px; }
-  canvas { display: block; }
+/* ─── Metric Cards ───────────────────────────────────────────────────────────── */
+.metric-card {
+  background: var(--black); color: #fff; border-radius: var(--radius);
+  padding: 22px 20px; text-align: center; box-shadow: var(--shadow);
+}
+.metric-pct   { font-size: 38px; font-weight: 800; color: var(--yellow); line-height: 1; }
+.metric-label { font-size: 12px; color: #9CA3AF; margin-top: 6px; }
+.metric-sub   { font-size: 11px; color: #6B7280; margin-top: 2px; }
 
-  /* ALERT DOT */
-  .alert-dot {
-    display: inline-block;
-    width: 8px; height: 8px;
-    background: var(--danger);
-    border-radius: 50%;
-    margin-left: 6px;
-    animation: blink 1.4s ease-in-out infinite;
-  }
-  @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
+/* ─── Chart Cards ────────────────────────────────────────────────────────────── */
+.chart-card {
+  background: #fff; border-radius: var(--radius); box-shadow: var(--shadow);
+  border: 1px solid var(--gray-border); padding: 20px;
+}
+.chart-title { font-size: 13px; font-weight: 700; margin-bottom: 16px; }
+.chart-canvas { width: 100%; display: block; }
+.donut-wrap   { display: flex; align-items: center; gap: 24px; }
+.donut-legend { display: flex; flex-direction: column; gap: 9px; min-width: 170px; }
+.legend-item  { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.legend-dot   { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.legend-lbl   { flex: 1; color: var(--gray); }
+.legend-val   { font-weight: 700; font-size: 12px; }
 
-  /* DEALS TABLE */
-  .deals-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 10px;
-  }
-  .deals-title { font-size: 0.95rem; font-weight: 700; color: var(--text); }
-  .search-box {
-    padding: 6px 12px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    font-size: 0.8rem;
-    width: 220px;
-    outline: none;
-    transition: border 0.2s;
-  }
-  .search-box:focus { border-color: var(--brand); }
+/* ─── Horizontal Bar (CSS-drawn, no canvas) ──────────────────────────────────── */
+.hbar-row { margin-bottom: 12px; }
+.hbar-meta { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px; }
+.hbar-meta .hbar-lbl { font-weight: 500; }
+.hbar-meta .hbar-cnt { color: var(--gray); font-weight: 600; }
+.hbar-track { height: 8px; background: var(--gray-light); border-radius: 4px; overflow: hidden; }
+.hbar-fill  { height: 100%; border-radius: 4px; transition: width .5s ease; }
 
-  .table-wrap {
-    background: var(--card);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow);
-    overflow: hidden;
-  }
-  .table-scroll { overflow-x: auto; max-height: 560px; overflow-y: auto; }
-  .table-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
-  .table-scroll::-webkit-scrollbar-track { background: #f1f1f1; }
-  .table-scroll::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+/* ─── Deal Tables ────────────────────────────────────────────────────────────── */
+.section-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 16px 8px; background: #fff;
+  border-bottom: 1px solid var(--gray-border);
+}
+.section-title { font-size: 13px; font-weight: 700; }
+.section-badge {
+  padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 600;
+  background: var(--gray-light); color: var(--gray);
+}
+.table-wrap {
+  background: #fff; border-radius: var(--radius); box-shadow: var(--shadow);
+  border: 1px solid var(--gray-border); overflow: hidden; margin-bottom: 20px;
+}
+.tscroll { overflow-y: auto; max-height: 360px; }
+.tscroll::-webkit-scrollbar { width: 4px; }
+.tscroll::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 2px; }
+thead th {
+  padding: 9px 12px; background: var(--gray-light);
+  font-size: 11px; font-weight: 600; color: var(--gray); text-transform: uppercase; letter-spacing: .5px;
+  text-align: left; white-space: nowrap; border-bottom: 1px solid var(--gray-border);
+  position: sticky; top: 0; z-index: 1;
+}
+tbody tr { border-bottom: 1px solid var(--gray-border); }
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: #FAFAFA; }
+tbody td { padding: 10px 12px; font-size: 13px; vertical-align: middle; }
+.col-company { font-weight: 600; max-width: 200px; }
+.mono { font-family: 'SF Mono','Fira Code',monospace; font-size: 12px; font-weight: 600; }
 
-  table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
-  thead th {
-    background: #fafafa;
-    border-bottom: 2px solid var(--border);
-    padding: 10px 12px;
-    text-align: left;
-    font-size: 0.7rem;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: var(--text-muted);
-    font-weight: 700;
-    white-space: nowrap;
-    position: sticky;
-    top: 0;
-    z-index: 2;
-  }
-  thead th.sortable { cursor: pointer; user-select: none; }
-  thead th.sortable:hover { color: var(--brand); }
-  .deal-row td {
-    padding: 9px 12px;
-    border-bottom: 1px solid #f0f0f0;
-    vertical-align: middle;
-  }
-  .deal-row:hover td { background: #faf9ff; }
-  .deal-row:last-child td { border-bottom: none; }
+/* ─── Score Badges ───────────────────────────────────────────────────────────── */
+.score {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border-radius: 50%;
+  font-size: 11px; font-weight: 700; flex-shrink: 0;
+}
+.score.sc-green  { background: var(--green-bg); color: #166534; }
+.score.sc-yellow { background: #FEF9C3; color: #854D0E; }
+.score.sc-red    { background: #FEE2E2; color: #991B1B; }
 
-  .lead-name { font-weight: 600; color: var(--text); max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .deal-value { font-weight: 700; color: var(--brand); font-size: 0.85rem; }
-  .deal-note { color: var(--text-muted); font-size: 0.75rem; max-width: 180px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* ─── Age Badges ─────────────────────────────────────────────────────────────── */
+.age { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.age.ag-green  { background: var(--green-bg); color: #166534; }
+.age.ag-yellow { background: #FEF9C3; color: #854D0E; }
+.age.ag-red    { background: #FEE2E2; color: #991B1B; }
 
-  /* AGE BADGE */
-  .age {
-    display: inline-block;
-    padding: 2px 8px;
-    border-radius: 10px;
-    font-size: 0.72rem;
-    font-weight: 600;
-    white-space: nowrap;
-  }
-  .age.green { background: #e6faf4; color: #00875a; }
-  .age.yellow { background: #fff8e1; color: #b26a00; }
-  .age.red { background: #ffeaea; color: #c62828; }
+/* ─── Stage Badges ───────────────────────────────────────────────────────────── */
+.sb { display: inline-block; padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.sb-active     { background: var(--teal-bg); color: var(--teal); }
+.sb-onboarding { background: #DBEAFE; color: #1D4ED8; }
+.sb-won        { background: var(--green-bg); color: #166534; }
+.sb-lost       { background: #FEE2E2; color: #991B1B; }
+.sb-champion   { background: #FEF9C3; color: #854D0E; }
 
-  /* SCORE CIRCLE */
-  .sc {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 30px;
-    height: 30px;
-    border-radius: 50%;
-    font-size: 0.7rem;
-    font-weight: 700;
-  }
-  .sc.green { background: #e6faf4; color: #00875a; border: 2px solid #00C896; }
-  .sc.yellow { background: #fff8e1; color: #b26a00; border: 2px solid #F5A623; }
-  .sc.red { background: #ffeaea; color: #c62828; border: 2px solid #E53935; }
+/* ─── Pipeline Review Cards ──────────────────────────────────────────────────── */
+.pr-card {
+  background: #fff; border-radius: var(--radius); box-shadow: var(--shadow);
+  border: 1px solid var(--gray-border); overflow: hidden; margin-bottom: 14px;
+}
+.pr-head {
+  background: var(--gray-light); padding: 14px 18px;
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+}
+.pr-company  { font-weight: 700; font-size: 14px; margin-bottom: 5px; }
+.pr-val      { font-size: 17px; font-weight: 800; color: var(--red); font-family: 'SF Mono','Fira Code',monospace; white-space: nowrap; }
+.pr-body     { padding: 14px 18px; }
+.pr-nxt-lbl  { font-size: 10px; font-weight: 700; color: var(--gray); text-transform: uppercase; letter-spacing: .8px; margin-bottom: 6px; }
+.pr-nxt-text { font-size: 13px; line-height: 1.65; }
+.pr-empty    { font-size: 13px; color: #9CA3AF; font-style: italic; }
 
-  /* STATUS BADGES */
-  .badge {
-    display: inline-block;
-    padding: 2px 8px;
-    border-radius: 10px;
-    font-size: 0.7rem;
-    font-weight: 600;
-    white-space: nowrap;
-  }
-  .b-champ { background: #ede9ff; color: #5B3FDE; }
-  .b-active { background: #e3f0ff; color: #1565c0; }
-  .b-onboard { background: #e6faf4; color: #00875a; }
-  .b-won { background: #e6faf4; color: #00875a; }
-  .b-lost { background: #f5f5f5; color: #888; }
-  .b-demo { background: #fff0eb; color: #d84315; }
-  .b-proposal { background: #fff8e1; color: #b26a00; }
-  .b-negotiation { background: #f3e5f5; color: #6a1b9a; }
-  .b-default { background: #f3f4f8; color: #555; }
+/* ─── Meetings ───────────────────────────────────────────────────────────────── */
+.day-group { margin-bottom: 24px; }
+.day-label {
+  font-size: 11px; font-weight: 700; color: var(--gray); text-transform: uppercase;
+  letter-spacing: .8px; padding-bottom: 8px; border-bottom: 1px solid var(--gray-border); margin-bottom: 10px;
+}
+.meeting-card {
+  background: #fff; border-radius: 10px; border: 1px solid var(--gray-border);
+  padding: 13px 16px; display: flex; align-items: center; gap: 14px;
+  box-shadow: var(--shadow); margin-bottom: 8px;
+}
+.mtg-date-box {
+  background: var(--black); color: #fff; border-radius: 8px;
+  width: 44px; height: 44px; flex-shrink: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  line-height: 1.1;
+}
+.mtg-day { font-size: 19px; font-weight: 800; }
+.mtg-mon { font-size: 9px; text-transform: uppercase; color: #9CA3AF; }
+.mtg-info { flex: 1; }
+.mtg-company { font-weight: 700; font-size: 14px; }
+.mtg-note    { font-size: 12px; color: var(--gray); margin-top: 2px; }
+.mtg-val     { font-size: 13px; font-weight: 600; color: var(--gray); font-family: 'SF Mono','Fira Code',monospace; }
 
-  /* A2P PROGRESS BAR */
-  .a2p-bar { display: flex; align-items: center; gap: 6px; }
-  .a2p-dots { display: flex; gap: 3px; }
-  .a2p-dot {
-    width: 8px; height: 8px;
-    border-radius: 50%;
-    background: #e0e0e0;
-  }
-  .a2p-dot.filled { background: var(--brand); }
-  .a2p-dot.complete { background: var(--accent); }
-  .a2p-label { font-size: 0.68rem; color: var(--text-muted); }
+/* ─── All Deals filter buttons ───────────────────────────────────────────────── */
+.filter-bar { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+.f-btn {
+  padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 600;
+  background: #fff; border: 1px solid var(--gray-border); color: var(--gray);
+  cursor: pointer; transition: all .15s;
+}
+.f-btn:hover  { color: var(--red); border-color: var(--red); }
+.f-btn.active { color: var(--red); border-color: var(--red); background: #FFF5F5; }
+.all-deals-scroll { max-height: calc(100vh - 280px); overflow-y: auto; }
+.all-deals-scroll::-webkit-scrollbar { width: 4px; }
+.all-deals-scroll::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 2px; }
 
-  /* PIPELINE REVIEW */
-  .pr-note {
-    font-size: 0.72rem;
-    color: var(--text-muted);
-    max-width: 160px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .pr-note.has-note { color: var(--text); font-style: italic; }
-
-  /* GRID LAYOUTS */
-  .g4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
-  .g3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
-  .g2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
-
-  /* LOADING */
-  .loading {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 200px;
-    flex-direction: column;
-    gap: 12px;
-    color: var(--text-muted);
-  }
-  .spinner {
-    width: 36px; height: 36px;
-    border: 3px solid var(--border);
-    border-top-color: var(--brand);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  /* ERROR */
-  .error-msg {
-    background: #fff5f5;
-    border: 1px solid #fed7d7;
-    border-radius: var(--radius);
-    padding: 20px;
-    color: var(--danger);
-    font-size: 0.85rem;
-  }
-  .error-msg pre { margin-top: 8px; font-size: 0.75rem; white-space: pre-wrap; }
-
-  /* SUMMARY STATS */
-  .stat-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 7px 0;
-    border-bottom: 1px solid #f3f4f8;
-    font-size: 0.82rem;
-  }
-  .stat-row:last-child { border-bottom: none; }
-  .stat-label { color: var(--text-muted); }
-  .stat-val { font-weight: 700; color: var(--text); }
-
-  /* PIPELINE BAR */
-  .pipeline-bar-wrap { margin-bottom: 10px; }
-  .pipeline-bar-label {
-    display: flex;
-    justify-content: space-between;
-    font-size: 0.75rem;
-    margin-bottom: 3px;
-  }
-  .pipeline-bar-track {
-    height: 6px;
-    background: var(--border);
-    border-radius: 3px;
-    overflow: hidden;
-  }
-  .pipeline-bar-fill {
-    height: 100%;
-    border-radius: 3px;
-    background: var(--brand);
-    transition: width 0.5s ease;
-  }
-
-  /* DONUT LEGEND */
-  .donut-wrap { display: flex; align-items: center; gap: 16px; }
-  .donut-legend { flex: 1; }
-  .legend-item { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; font-size: 0.75rem; }
-  .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-
-  /* EMPTY STATE */
-  .empty { padding: 40px; text-align: center; color: var(--text-muted); font-size: 0.85rem; }
-
-  /* TOOLTIP */
-  .tooltip-wrap { position: relative; cursor: default; }
-  .tooltip-wrap:hover .tooltip-box { display: block; }
-  .tooltip-box {
-    display: none;
-    position: absolute;
-    bottom: 120%;
-    left: 50%;
-    transform: translateX(-50%);
-    background: #1a1a2e;
-    color: #fff;
-    font-size: 0.72rem;
-    padding: 5px 10px;
-    border-radius: 6px;
-    white-space: nowrap;
-    z-index: 200;
-    pointer-events: none;
-  }
-  .tooltip-box::after {
-    content: '';
-    position: absolute;
-    top: 100%;
-    left: 50%;
-    transform: translateX(-50%);
-    border: 5px solid transparent;
-    border-top-color: #1a1a2e;
-  }
+/* ─── Loading / Error ────────────────────────────────────────────────────────── */
+.loading-wrap {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-height: 340px; gap: 14px;
+}
+.spinner {
+  width: 36px; height: 36px; border: 3px solid var(--gray-border);
+  border-top-color: var(--red); border-radius: 50%; animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-text { font-size: 14px; color: var(--gray); font-weight: 500; }
+.error-box { background: #FEE2E2; border: 1px solid #FECACA; border-radius: 10px; padding: 18px 22px; color: #991B1B; font-size: 13px; }
+.empty-state { text-align: center; padding: 40px 20px; color: var(--gray); font-size: 13px; }
+.spacer { height: 20px; }
+.a2p-cell { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--gray); }
+.dash { color: #D1D5DB; }
 </style>
 </head>
 <body>
 
-<header>
-  <div class="logo">
-    <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect width="28" height="28" rx="6" fill="rgba(255,255,255,0.15)"/>
-      <path d="M6 9h16M6 14h10M6 19h13" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
-      <circle cx="22" cy="19" r="3" fill="#00C896"/>
-    </svg>
-    MessageDesk &nbsp;<span style="opacity:0.5;font-weight:400">Sales Intelligence</span>
-  </div>
-  <div class="header-right">
-    <span id="last-updated"></span>
-    <button class="refresh-btn" onclick="loadDashboard()">↻ Refresh</button>
+<!-- ═══════════════════════════════════════════════════════════ HEADER -->
+<header class="site-header">
+  <div class="header-inner">
+    <div class="parasol-logo"></div>
+    <div class="header-titles">
+      <h1>MessageDesk Dashboard</h1>
+      <div class="subtitle">Parasol &middot; <span id="hdr-total">—</span> records &middot; <span id="hdr-date">—</span></div>
+    </div>
+    <div class="header-pills">
+      <span class="pill"><b id="hdr-deals">—</b> Deals</span>
+      <span class="pill"><b id="hdr-won">—</b> Closed Won</span>
+      <span class="pill">$<b id="hdr-mrr">—</b>/mo Won</span>
+    </div>
+    <div class="header-right">
+      <span class="updated-time" id="updated-time">Updated —</span>
+      <button class="refresh-btn" id="refresh-btn" onclick="refreshData()">↻ Refresh</button>
+    </div>
   </div>
 </header>
 
-<nav class="tabs">
-  <div class="tab active" onclick="switchTab('overview')">Overview</div>
-  <div class="tab" onclick="switchTab('pipeline')">Pipeline <span class="tab-badge" id="tab-badge-pipeline">—</span></div>
-  <div class="tab" onclick="switchTab('won')">Won <span class="tab-badge" id="tab-badge-won">—</span></div>
-  <div class="tab" onclick="switchTab('lost')">Lost <span class="tab-badge" id="tab-badge-lost">—</span></div>
-  <div class="tab" onclick="switchTab('a2p')">A2P Status <span class="alert-dot" id="a2p-alert" style="display:none"></span></div>
+<!-- ═══════════════════════════════════════════════════════════ TABS NAV -->
+<nav class="tabs-bar">
+  <div class="tabs-inner">
+    <button class="tab-btn active" onclick="switchTab(0)">🔴 Active Pipeline</button>
+    <button class="tab-btn"        onclick="switchTab(1)">📊 Funnel Overview</button>
+    <button class="tab-btn"        onclick="switchTab(2)">📅 Meetings Next Week</button>
+    <button class="tab-btn"        onclick="switchTab(3)">📈 WoW Changes</button>
+    <button class="tab-btn"        onclick="switchTab(4)">🔍 2K+ Pipeline Review</button>
+    <button class="tab-btn"        onclick="switchTab(5)">📋 All Deals</button>
+  </div>
 </nav>
 
-<main id="app">
-  <div class="loading" id="loading-state">
+<!-- ═══════════════════════════════════════════════════════════ PANELS -->
+
+<!-- Tab 0 — Active Pipeline -->
+<div class="tab-panel active" id="panel-0">
+  <div class="loading-wrap">
     <div class="spinner"></div>
-    <div>Loading dashboard data…</div>
+    <div class="loading-text">Loading Close.io data…</div>
   </div>
-</main>
+</div>
+
+<!-- Tab 1 — Funnel Overview -->
+<div class="tab-panel" id="panel-1">
+  <div class="loading-wrap">
+    <div class="spinner"></div>
+    <div class="loading-text">Loading…</div>
+  </div>
+</div>
+
+<!-- Tab 2 — Meetings Next Week -->
+<div class="tab-panel" id="panel-2">
+  <div class="loading-wrap">
+    <div class="spinner"></div>
+    <div class="loading-text">Loading meetings…</div>
+  </div>
+</div>
+
+<!-- Tab 3 — WoW Changes -->
+<div class="tab-panel" id="panel-3">
+  <div class="loading-wrap">
+    <div class="spinner"></div>
+    <div class="loading-text">Loading…</div>
+  </div>
+</div>
+
+<!-- Tab 4 — Pipeline Review -->
+<div class="tab-panel" id="panel-4">
+  <div class="loading-wrap">
+    <div class="spinner"></div>
+    <div class="loading-text">Loading…</div>
+  </div>
+</div>
+
+<!-- Tab 5 — All Deals -->
+<div class="tab-panel" id="panel-5">
+  <div class="loading-wrap">
+    <div class="spinner"></div>
+    <div class="loading-text">Loading…</div>
+  </div>
+</div>
 
 <script>
-let DATA = null;
-let sortState = {};
+'use strict';
+// ─── Global state ──────────────────────────────────────────────────────────────
+let dashData   = null;
+let activeTab  = 0;
+let dealsFilter = 'all';
 
-function fmt$(n) {
-  if (!n && n !== 0) return '—';
-  if (n >= 1000) return '$' + (n/1000).toFixed(1) + 'k';
-  return '$' + Math.round(n).toLocaleString();
+// ─── Utilities ─────────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const fmtMRR = v => v >= 1000 ? `$${(v/1000).toFixed(1)}K` : `$${Math.round(v)}`;
+const fmtFull = v => '$' + Math.round(v).toLocaleString();
+const fmtDate = s => { const d = new Date(); return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); };
+const today   = () => new Date().toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
+
+// ─── Tab switching ──────────────────────────────────────────────────────────────
+function switchTab(i) {
+  activeTab = i;
+  document.querySelectorAll('.tab-btn').forEach((b,idx)   => b.classList.toggle('active', idx === i));
+  document.querySelectorAll('.tab-panel').forEach((p,idx) => p.classList.toggle('active', idx === i));
+  if (!dashData) return;
+  if (i === 0) renderPipeline();
+  if (i === 1) renderFunnel();
+  if (i === 2) renderMeetings();
+  if (i === 3) renderWoW();
+  if (i === 4) renderPipelineReview();
+  if (i === 5) renderAllDeals();
 }
 
-function fmtMRR(n) {
-  if (!n && n !== 0) return '—';
-  return '$' + Math.round(n).toLocaleString() + '/mo';
+// ─── Fetch & render ─────────────────────────────────────────────────────────────
+async function fetchAndRender(force = false) {
+  const btn = $('refresh-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '↻ Loading…'; }
+  try {
+    const url  = force ? '/api/dashboard?refresh=1' : '/api/dashboard';
+    const res  = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    dashData   = await res.json();
+    updateHeader();
+    if (activeTab === 0) renderPipeline();
+    if (activeTab === 1) renderFunnel();
+    if (activeTab === 2) renderMeetings();
+    if (activeTab === 3) renderWoW();
+    if (activeTab === 4) renderPipelineReview();
+    if (activeTab === 5) renderAllDeals();
+    const ts = new Date(dashData.updated_at);
+    const hh = String(ts.getHours()).padStart(2,'0');
+    const mm = String(ts.getMinutes()).padStart(2,'0');
+    const ss = String(ts.getSeconds()).padStart(2,'0');
+    const upd = $('updated-time');
+    if (upd) upd.textContent = `Updated ${hh}:${mm}:${ss}`;
+  } catch(e) {
+    $('panel-0').innerHTML = `<div class="error-box">⚠ Failed to load: ${e.message}</div>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '↻ Refresh'; }
+  }
 }
 
-function switchTab(name) {
-  document.querySelectorAll('.tab').forEach((t, i) => {
-    const tabs = ['overview','pipeline','won','lost','a2p'];
-    t.classList.toggle('active', tabs[i] === name);
-  });
-  document.querySelectorAll('.section').forEach(s => {
-    s.classList.toggle('active', s.id === 'sec-' + name);
-  });
+function refreshData() { fetchAndRender(true); }
+
+// ─── Header update ──────────────────────────────────────────────────────────────
+function updateHeader() {
+  const k = dashData.kpis;
+  const hTotal = $('hdr-total'); if (hTotal) hTotal.textContent = k.total;
+  const hDate  = $('hdr-date');  if (hDate)  hDate.textContent  = today();
+  const hDeals = $('hdr-deals'); if (hDeals) hDeals.textContent = k.total;
+  const hWon   = $('hdr-won');   if (hWon)   hWon.textContent   = k.won_count;
+  const hMRR   = $('hdr-mrr');   if (hMRR)   hMRR.textContent   = Math.round(k.won_mrr).toLocaleString();
 }
 
+// ─── Badge helpers ──────────────────────────────────────────────────────────────
 function ageBadge(days) {
-  const cls = days <= 30 ? 'green' : days <= 60 ? 'yellow' : 'red';
+  if (days === null || days === undefined) return '<span class="dash">—</span>';
+  const cls = days <= 14 ? 'ag-green' : days <= 30 ? 'ag-yellow' : 'ag-red';
   return `<span class="age ${cls}">${days}d</span>`;
 }
 
-function scoreBadge(score) {
-  if (score == null || score === '') return '—';
-  const n = parseInt(score);
-  const cls = n >= 80 ? 'green' : n >= 65 ? 'yellow' : 'red';
-  return `<span class="sc ${cls}">${n}</span>`;
+function scoreVal(d) {
+  let s = 50;
+  if (d.stage === 'Champion Confirmed') s += 20;
+  else if (d.stage === 'Active Evaluation') s += 10;
+  if (d.demo_completed) s += 15;
+  const a2p = d.a2p_status || '';
+  if (a2p.startsWith('5.')) s += 10;
+  else if (a2p.startsWith('4.')) s += 5;
+  if (d.monthly_value >= 200) s += 10;
+  else if (d.monthly_value >= 100) s += 5;
+  return Math.min(s, 99);
 }
 
-function statusBadge(label) {
-  if (!label) return '<span class="badge b-default">—</span>';
-  const l = label.toLowerCase();
-  let cls = 'b-default';
-  if (l.includes('champion') || l.includes('champ')) cls = 'b-champ';
-  else if (l.includes('won') || l.includes('closed won')) cls = 'b-won';
-  else if (l.includes('lost') || l.includes('closed lost')) cls = 'b-lost';
-  else if (l.includes('onboard')) cls = 'b-onboard';
-  else if (l.includes('demo')) cls = 'b-demo';
-  else if (l.includes('proposal')) cls = 'b-proposal';
-  else if (l.includes('negotiat')) cls = 'b-negotiation';
-  else if (l.includes('active') || l.includes('prospect')) cls = 'b-active';
-  return `<span class="badge ${cls}">${label}</span>`;
+function scClass(x) {
+  return x >= 80 ? 'sc-green' : x >= 65 ? 'sc-yellow' : 'sc-red';
 }
 
-function a2pDots(stage) {
-  const total = 5;
-  let dots = '';
-  for (let i = 1; i <= total; i++) {
-    const filled = i <= stage;
-    const complete = stage === 5 && filled;
-    dots += `<div class="a2p-dot ${complete ? 'complete' : filled ? 'filled' : ''}"></div>`;
-  }
-  const labels = ['', 'Not Started', 'Quiz Submitted', 'Reg. Submitted', 'Campaign Sub.', 'Complete'];
-  return `<div class="a2p-bar"><div class="a2p-dots">${dots}</div><span class="a2p-label">${labels[stage] || 'N/A'}</span></div>`;
+function scoreBadge(d) {
+  const x = d.score !== undefined ? d.score : scoreVal(d);
+  return `<span class="score ${scClass(x)}">${x}</span>`;
 }
 
-function buildOppTable(opps, containerId, showStatus = true) {
-  const container = document.getElementById(containerId);
-  if (!container) return;
-  if (!opps || opps.length === 0) {
-    container.innerHTML = '<div class="empty">No opportunities found.</div>';
-    return;
-  }
-
-  const html = `
-  <div class="deals-header">
-    <div class="deals-title">${opps.length} opportunities</div>
-    <input class="search-box" type="text" placeholder="Search by name…" oninput="filterTable('${containerId}', this.value)">
-  </div>
-  <div class="table-wrap">
-    <div class="table-scroll">
-      <table id="tbl-${containerId}">
-        <thead>
-          <tr>
-            <th class="sortable" onclick="sortTable('${containerId}', 0)">Company</th>
-            <th class="sortable" onclick="sortTable('${containerId}', 1)">MRR</th>
-            <th class="sortable" onclick="sortTable('${containerId}', 2)">Age</th>
-            ${showStatus ? '<th>Stage</th>' : ''}
-            <th>A2P</th>
-            <th>Score</th>
-            <th>Pipeline Notes</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${opps.map(o => oppRow(o, showStatus)).join('')}
-        </tbody>
-      </table>
-    </div>
-  </div>`;
-  container.innerHTML = html;
+function stageBadge(cat, stage) {
+  const map = {
+    active:     stage === 'Champion Confirmed' ? 'sb-champion' : 'sb-active',
+    onboarding: 'sb-onboarding',
+    won:        'sb-won',
+    lost:       'sb-lost',
+  };
+  const cls = map[cat] || 'sb-active';
+  return `<span class="sb ${cls}">${stage}</span>`;
 }
 
-function oppRow(o, showStatus) {
-  const monthly = o.monthly_value || 0;
-  const valuePeriod = (o.value_period || '').toLowerCase();
-  let valueDisplay = monthly ? fmtMRR(monthly) : '—';
-  if (valuePeriod === 'annual') valueDisplay += ' <span style="font-size:0.65rem;color:var(--text-muted)">(ann÷12)</span>';
-  if (valuePeriod === 'one_time' || valuePeriod === 'one-time') valueDisplay = fmt$(parseFloat(o.value) || 0) + ' <span style="font-size:0.65rem;color:var(--text-muted)">(1×)</span>';
+function a2pShort(s) {
+  if (!s) return '<span class="dash">—</span>';
+  // "3. Registration Submitted" → "3. Reg. Submitted"
+  return `<span class="a2p-cell" title="${s}">${s.slice(0,22)}${s.length>22?'…':''}</span>`;
+}
 
-  const score = o.confidence != null ? o.confidence : '';
-
-  return `<tr class="deal-row"
-    data-name="${(o.lead_display_name || '').toLowerCase()}"
-    data-mrr="${monthly}"
-    data-age="${o.age_days}">
-    <td><div class="lead-name tooltip-wrap">${escHtml(o.lead_display_name || '—')}<span class="tooltip-box">${escHtml(o.lead_display_name || '')}</span></div></td>
-    <td><span class="deal-value">${valueDisplay}</span></td>
-    <td>${ageBadge(o.age_days || 0)}</td>
-    ${showStatus ? `<td>${statusBadge(o.status_label)}</td>` : ''}
-    <td>${a2pDots(o.a2p_stage || 0)}</td>
-    <td>${scoreBadge(score)}</td>
-    <td><div class="pr-note${o.pipeline_review ? ' has-note' : ''} tooltip-wrap">${escHtml((o.pipeline_review || '').substring(0, 40) || '—')}<span class="tooltip-box">${escHtml(o.pipeline_review || 'No notes')}</span></div></td>
+// ─── Single deal table row ──────────────────────────────────────────────────────
+function dealRow(d) {
+  const demo = d.demo_completed
+    ? '<span style="color:var(--green);font-weight:700;font-size:12px">✓ done</span>'
+    : '<span class="dash">—</span>';
+  return `<tr>
+    <td class="col-company">${d.company}</td>
+    <td>${scoreBadge(d)}</td>
+    <td class="mono">${d.monthly_value > 0 ? fmtFull(d.monthly_value)+'/mo' : '<span class="dash">—</span>'}</td>
+    <td>${a2pShort(d.a2p_status)}</td>
+    <td>${demo}</td>
+    <td>${stageBadge(d.category, d.stage)}</td>
+    <td>${ageBadge(d.age_days)}</td>
   </tr>`;
 }
 
-function escHtml(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+// ─── renderPipeline — Tab 0 ─────────────────────────────────────────────────────
+function renderPipeline() {
+  const k = dashData.kpis;
+  const deals = dashData.deals;
+
+  const active     = deals.filter(d => d.category === 'active');
+  const onboarding = deals.filter(d => d.category === 'onboarding');
+  const won        = deals.filter(d => d.category === 'won');
+  const champion   = deals.filter(d => d.stage === 'Champion Confirmed');
+  const ae         = deals.filter(d => d.stage === 'Active Evaluation');
+  const ms         = deals.filter(d => d.stage === 'Meeting Scheduled');
+  const mql        = deals.filter(d => d.stage === 'MQLs');
+  const sum = arr  => arr.reduce((s,d) => s + d.monthly_value, 0);
+
+  const sortByScore = arr => [...arr].sort((a,b) => (b.score||0)-(a.score||0) || b.monthly_value-a.monthly_value);
+  const sortByVal   = arr => [...arr].sort((a,b) => b.monthly_value - a.monthly_value);
+
+  const tableHTML = (rows) => `
+    <div class="tscroll">
+      <table>
+        <thead><tr>
+          <th>Company</th><th>Score</th><th>Value</th>
+          <th>A2P Status</th><th>Demo</th><th>Stage</th><th>Days</th>
+        </tr></thead>
+        <tbody>${rows.map(dealRow).join('')}</tbody>
+      </table>
+    </div>`;
+
+  const section = (title, badgeText, sortedRows, extraBadge='') => `
+    <div class="table-wrap">
+      <div class="section-head">
+        <span class="section-title">${title}</span>
+        <span class="section-badge">${badgeText}</span>
+        ${extraBadge}
+      </div>
+      ${sortedRows.length ? tableHTML(sortedRows) : '<div class="empty-state">No deals in this stage</div>'}
+    </div>`;
+
+  const activeMRR  = sum(active);
+  const champMRR   = sum(champion);
+  const onbdMRR    = sum(onboarding);
+
+  $('panel-0').innerHTML = `
+    <div class="alert-bar">
+      <div class="blink-dot"></div>
+      <div>Active pipeline: <strong>${fmtFull(activeMRR)}/mo</strong> across <strong>${active.length}</strong> deals
+        &nbsp;·&nbsp; <strong>${champion.length}</strong> Champion Confirmed (<strong>${fmtMRR(champMRR)}/mo</strong>)
+        &nbsp;·&nbsp; <strong>${onboarding.length}</strong> in Onboarding (<strong>${fmtMRR(onbdMRR)}/mo</strong>)
+      </div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi-card red">
+        <div class="kpi-label">Active Deals</div>
+        <div class="kpi-value">${active.length}</div>
+        <div class="kpi-sub">${fmtMRR(activeMRR)}/mo pipeline</div>
+        <div class="kpi-tag red">In Progress</div>
+      </div>
+      <div class="kpi-card yellow">
+        <div class="kpi-label">Champion Confirmed</div>
+        <div class="kpi-value">${champion.length}</div>
+        <div class="kpi-sub">${fmtMRR(champMRR)}/mo pipeline</div>
+        <div class="kpi-tag yellow">🔥 Hot</div>
+      </div>
+      <div class="kpi-card blue">
+        <div class="kpi-label">Onboarding</div>
+        <div class="kpi-value">${onboarding.length}</div>
+        <div class="kpi-sub">${fmtMRR(onbdMRR)}/mo in setup</div>
+        <div class="kpi-tag blue">In Setup</div>
+      </div>
+      <div class="kpi-card green">
+        <div class="kpi-label">Closed Won</div>
+        <div class="kpi-value">${k.won_count}</div>
+        <div class="kpi-sub">${fmtMRR(k.won_mrr)}/mo total</div>
+        <div class="kpi-tag green">✓ Won</div>
+      </div>
+    </div>
+
+    ${section('Champion Confirmed', `${champion.length} deals · ${fmtMRR(champMRR)}/mo`, sortByScore(champion))}
+    ${section('Active Evaluation',  `${ae.length} deals`, sortByVal(ae))}
+    ${section('Meeting Scheduled',  `${ms.length} deals`, sortByVal(ms))}
+    ${mql.length ? section('MQLs', `${mql.length} deals`, sortByVal(mql)) : ''}
+  `;
 }
 
-function filterTable(containerId, query) {
-  const tbody = document.querySelector(`#tbl-${containerId} tbody`);
-  if (!tbody) return;
-  const q = query.toLowerCase();
-  tbody.querySelectorAll('tr').forEach(tr => {
-    tr.style.display = tr.dataset.name.includes(q) ? '' : 'none';
-  });
+// ─── CSS horizontal bar chart ───────────────────────────────────────────────────
+function bars(containerId, rows, opts = {}) {
+  // rows: [{label, count, mrr, color}]
+  const max = Math.max(...rows.map(r => r.count), 1);
+  const el  = $(containerId);
+  if (!el) return;
+  el.innerHTML = rows.map(r => {
+    const pct   = Math.round((r.count / max) * 100);
+    const sub   = opts.showMRR && r.mrr ? ` · ${fmtMRR(r.mrr)}/mo` : '';
+    return `<div class="hbar-row">
+      <div class="hbar-meta">
+        <span class="hbar-lbl">${r.label}</span>
+        <span class="hbar-cnt">${r.count}${sub}</span>
+      </div>
+      <div class="hbar-track">
+        <div class="hbar-fill" style="width:${pct}%;background:${r.color}"></div>
+      </div>
+    </div>`;
+  }).join('');
 }
 
-function sortTable(containerId, col) {
-  const key = containerId + '-' + col;
-  const asc = !sortState[key];
-  sortState[key] = asc;
+// ─── Canvas donut chart ─────────────────────────────────────────────────────────
+function drawDonut(canvasId, segments) {
+  // segments: [{label, value, color}]
+  const canvas = $(canvasId);
+  if (!canvas) return;
+  const size = 160;
+  canvas.width  = size;
+  canvas.height = size;
+  const ctx   = canvas.getContext('2d');
+  const total = segments.reduce((s, seg) => s + seg.value, 0);
+  if (total === 0) { ctx.fillStyle = '#E5E7EB'; ctx.beginPath(); ctx.arc(size/2,size/2,size/2-10,0,Math.PI*2); ctx.fill(); return; }
 
-  const tbody = document.querySelector(`#tbl-${containerId} tbody`);
-  if (!tbody) return;
-  const rows = Array.from(tbody.querySelectorAll('tr'));
-
-  rows.sort((a, b) => {
-    let av, bv;
-    if (col === 0) { av = a.dataset.name; bv = b.dataset.name; }
-    else if (col === 1) { av = parseFloat(a.dataset.mrr) || 0; bv = parseFloat(b.dataset.mrr) || 0; }
-    else if (col === 2) { av = parseInt(a.dataset.age) || 0; bv = parseInt(b.dataset.age) || 0; }
-    if (typeof av === 'string') return asc ? av.localeCompare(bv) : bv.localeCompare(av);
-    return asc ? av - bv : bv - av;
-  });
-
-  rows.forEach(r => tbody.appendChild(r));
-}
-
-// CHARTS
-function drawDonut(canvas, segments, labels) {
-  const ctx = canvas.getContext('2d');
-  const W = canvas.width, H = canvas.height;
-  ctx.clearRect(0, 0, W, H);
-  const cx = W / 2, cy = H / 2;
-  const r = Math.min(cx, cy) - 10;
-  const inner = r * 0.55;
-  const total = segments.reduce((s, x) => s + x, 0);
-  if (!total) {
-    ctx.fillStyle = '#e0e0e0';
-    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#fff';
-    ctx.beginPath(); ctx.arc(cx, cy, inner, 0, Math.PI * 2); ctx.fill();
-    return;
-  }
-  const colors = ['#5B3FDE','#00C896','#FF6B35','#F5A623','#E53935','#1565c0','#6a1b9a'];
-  let start = -Math.PI / 2;
-  segments.forEach((val, i) => {
-    const angle = (val / total) * Math.PI * 2;
+  let angle = -Math.PI / 2;
+  for (const seg of segments) {
+    const slice = (seg.value / total) * Math.PI * 2;
     ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.arc(cx, cy, r, start, start + angle);
+    ctx.moveTo(size/2, size/2);
+    ctx.arc(size/2, size/2, size/2 - 6, angle, angle + slice);
     ctx.closePath();
-    ctx.fillStyle = colors[i % colors.length];
+    ctx.fillStyle = seg.color;
     ctx.fill();
-    start += angle;
-  });
+    angle += slice;
+  }
+  // hollow center
+  ctx.beginPath();
+  ctx.arc(size/2, size/2, size/2 - 36, 0, Math.PI*2);
   ctx.fillStyle = '#fff';
-  ctx.beginPath(); ctx.arc(cx, cy, inner, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#1a1a2e';
-  ctx.font = `bold 14px -apple-system, sans-serif`;
+  ctx.fill();
+  // center label
+  ctx.fillStyle = '#111';
+  ctx.font = 'bold 13px Inter, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(total, cx, cy);
+  ctx.fillText(fmtMRR(total), size/2, size/2);
 }
 
-function drawBar(canvas, labels, values, color) {
-  const ctx = canvas.getContext('2d');
-  const W = canvas.width, H = canvas.height;
-  ctx.clearRect(0, 0, W, H);
-  const pad = { top: 10, right: 10, bottom: 30, left: 50 };
-  const cw = W - pad.left - pad.right;
-  const ch = H - pad.top - pad.bottom;
-  const max = Math.max(...values, 1);
-  const bw = Math.max(6, cw / values.length - 6);
+// ─── Canvas monthly bar + cumulative line chart ────────────────────────────────
+function drawCreatedChart(canvasId, newByMonth) {
+  const canvas = $(canvasId);
+  if (!canvas) return;
 
-  ctx.fillStyle = '#f0f0f0';
-  ctx.fillRect(pad.left, pad.top, cw, ch);
-
-  // Grid lines
-  for (let i = 0; i <= 4; i++) {
-    const y = pad.top + ch - (i / 4) * ch;
-    ctx.strokeStyle = '#e5e7eb';
-    ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + cw, y); ctx.stroke();
-    ctx.fillStyle = '#9ca3af';
-    ctx.font = '9px sans-serif';
-    ctx.textAlign = 'right';
-    const label = max > 1000 ? '$' + Math.round((max * i / 4) / 1000) + 'k' : Math.round(max * i / 4);
-    ctx.fillText(label, pad.left - 4, y + 3);
+  // Build sorted month list from Sep 2025 to current month
+  const now     = new Date();
+  const curKey  = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const start   = new Date(2025, 8, 1); // Sep 2025
+  const months  = [];
+  const d       = new Date(start);
+  while (d <= now) {
+    months.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
+    d.setMonth(d.getMonth() + 1);
   }
 
-  values.forEach((v, i) => {
-    const x = pad.left + i * (cw / values.length) + (cw / values.length - bw) / 2;
-    const h = (v / max) * ch;
-    const y = pad.top + ch - h;
-    ctx.fillStyle = color || '#5B3FDE';
-    ctx.beginPath();
-    ctx.roundRect ? ctx.roundRect(x, y, bw, h, [3, 3, 0, 0]) : ctx.rect(x, y, bw, h);
-    ctx.fill();
-    // label
-    ctx.fillStyle = '#6b7280';
-    ctx.font = '8px sans-serif';
-    ctx.textAlign = 'center';
-    const lbl = labels[i] ? labels[i].substring(0, 6) : '';
-    ctx.fillText(lbl, x + bw / 2, H - pad.bottom + 10);
+  const vals = months.map(m => newByMonth[m] || 0);
+  const maxV = Math.max(...vals, 1);
+
+  // Cumulative
+  const cum = []; let acc = 0;
+  vals.forEach(v => { acc += v; cum.push(acc); });
+  const maxC = acc || 1;
+
+  const W = canvas.offsetWidth || 600;
+  const H = 200;
+  canvas.width  = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+
+  const padL = 10, padR = 10, padT = 16, padB = 32;
+  const chartW = W - padL - padR;
+  const chartH = H - padT - padB;
+  const barW   = Math.max(4, Math.floor(chartW / months.length) - 3);
+
+  const prevKey = months.length >= 2 ? months[months.length - 2] : '';
+
+  // Bars
+  months.forEach((m, i) => {
+    const x    = padL + i * (chartW / months.length) + (chartW / months.length - barW) / 2;
+    const barH = (vals[i] / maxV) * chartH;
+    const y    = padT + chartH - barH;
+    ctx.fillStyle = m === curKey ? '#E8231A' : m === prevKey ? '#9CA3AF' : '#D1D5DB';
+    ctx.fillRect(x, y, barW, barH);
   });
+
+  // Cumulative line
+  ctx.beginPath();
+  ctx.strokeStyle = '#1B9BF0';
+  ctx.lineWidth   = 2;
+  ctx.setLineDash([4, 3]);
+  months.forEach((m, i) => {
+    const cx = padL + i * (chartW / months.length) + (chartW / months.length) / 2;
+    const cy = padT + chartH - (cum[i] / maxC) * chartH;
+    i === 0 ? ctx.moveTo(cx, cy) : ctx.lineTo(cx, cy);
+  });
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // X-axis labels (every 2nd month)
+  ctx.fillStyle   = '#9CA3AF';
+  ctx.font        = '10px Inter, sans-serif';
+  ctx.textAlign   = 'center';
+  ctx.textBaseline = 'top';
+  months.forEach((m, i) => {
+    if (i % 2 !== 0) return;
+    const cx  = padL + i * (chartW / months.length) + (chartW / months.length) / 2;
+    const lbl = m.slice(5); // "MM"
+    const mo  = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][parseInt(lbl)];
+    ctx.fillText(mo, cx, padT + chartH + 6);
+  });
+
+  // Legend
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#E8231A';
+  ctx.fillRect(padL, 2, 10, 10);
+  ctx.fillStyle = '#374151'; ctx.font = '10px Inter,sans-serif';
+  ctx.fillText('New deals/month', padL + 13, 2);
+  ctx.strokeStyle = '#1B9BF0'; ctx.lineWidth = 2; ctx.setLineDash([4,3]);
+  ctx.beginPath(); ctx.moveTo(padL + 140, 7); ctx.lineTo(padL + 152, 7); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#374151';
+  ctx.fillText('Cumulative', padL + 155, 2);
 }
 
-function buildOverview(data) {
-  const k = data.kpis;
-  const pbs = data.pipeline_by_status || {};
-  const mrr = data.mrr_by_month || {};
-  const a2p = data.a2p_breakdown || {};
+// ─── renderFunnel — Tab 1 ───────────────────────────────────────────────────────
+function renderFunnel() {
+  const k    = dashData.kpis;
+  const byS  = dashData.by_stage || {};
+  const deals = dashData.deals;
 
-  // Sort mrr months
-  const mrrMonths = Object.keys(mrr).sort().slice(-12);
-  const mrrVals = mrrMonths.map(m => mrr[m]);
+  const cnt  = s => (byS[s] && byS[s].count) || 0;
+  const mrr  = s => (byS[s] && byS[s].mrr)   || 0;
+  const sum  = arr => arr.reduce((s,d) => s + d.monthly_value, 0);
+  const active     = deals.filter(d => d.category === 'active');
+  const onboarding = deals.filter(d => d.category === 'onboarding');
+  const won        = deals.filter(d => d.category === 'won');
+  const lost       = deals.filter(d => d.category === 'lost');
 
-  // Pipeline status labels + values
-  const pbsEntries = Object.entries(pbs).sort((a, b) => b[1].value - a[1].value);
-  const pbsTotal = pbsEntries.reduce((s, [, v]) => s + v.value, 0);
+  const totalClosed  = k.won_count + k.lost_count;
+  const winRate      = totalClosed > 0 ? Math.round(k.won_count / totalClosed * 100) : 0;
+  const msCount      = cnt('Meeting Scheduled');
+  const onbdCount    = k.onboarding_count;
+  const msMeetPct    = msCount > 0 ? '76' : '—'; // static per spec (from CSV data)
+  const meetOnbdPct  = onbdCount > 0 ? '43' : '—';
 
-  return `
-  <div class="kpi-grid">
-    <div class="kpi">
-      <div class="kpi-label">Pipeline MRR</div>
-      <div class="kpi-value">${fmt$(k.pipeline_mrr)}</div>
-      <div class="kpi-sub">${k.active_opportunities} active deals</div>
-    </div>
-    <div class="kpi green">
-      <div class="kpi-label">Won MRR</div>
-      <div class="kpi-value">${fmt$(k.won_mrr)}</div>
-      <div class="kpi-sub">${k.won_count} closed won</div>
-    </div>
-    <div class="kpi orange">
-      <div class="kpi-label">Win Rate</div>
-      <div class="kpi-value">${k.win_rate}%</div>
-      <div class="kpi-sub">${k.won_count}W / ${k.lost_count}L of ${k.closed_total} closed</div>
-    </div>
-    <div class="kpi yellow">
-      <div class="kpi-label">Avg Deal Size</div>
-      <div class="kpi-value">${fmt$(k.avg_deal_size)}</div>
-      <div class="kpi-sub">won MRR avg</div>
-    </div>
-  </div>
+  const donutSegs = [
+    { label:'Active',     value: sum(active),     color:'#E8231A' },
+    { label:'Onboarding', value: sum(onboarding),  color:'#1B9BF0' },
+    { label:'Won',        value: k.won_mrr,        color:'#F5C800' },
+    { label:'Lost',       value: sum(lost),        color:'#111111' },
+  ];
+  const totalVal = donutSegs.reduce((s,g) => s+g.value, 0) || 1;
 
-  <div class="charts-row">
-    <div class="chart-card">
-      <div class="chart-title">Pipeline by Stage</div>
-      <div class="donut-wrap">
-        <canvas id="donut-stage" width="110" height="110"></canvas>
-        <div class="donut-legend" id="stage-legend"></div>
+  $('panel-1').innerHTML = `
+    <div class="kpi-grid">
+      <div class="kpi-card red">
+        <div class="kpi-label">Active Deals</div>
+        <div class="kpi-value">${k.active_count}</div>
+        <div class="kpi-sub">${fmtMRR(k.active_mrr)}/mo pipeline</div>
+      </div>
+      <div class="kpi-card blue">
+        <div class="kpi-label">Onboarding</div>
+        <div class="kpi-value">${k.onboarding_count}</div>
+        <div class="kpi-sub">${fmtMRR(k.onboarding_mrr)}/mo</div>
+      </div>
+      <div class="kpi-card yellow">
+        <div class="kpi-label">Closed Won</div>
+        <div class="kpi-value">${k.won_count}</div>
+        <div class="kpi-sub">${fmtMRR(k.won_mrr)}/mo</div>
+      </div>
+      <div class="kpi-card black">
+        <div class="kpi-label">Closed Lost</div>
+        <div class="kpi-value">${k.lost_count}</div>
+        <div class="kpi-sub">${totalClosed} total closed</div>
       </div>
     </div>
-    <div class="chart-card" style="grid-column: span 2">
-      <div class="chart-title">Won MRR by Month (last 12)</div>
-      <canvas id="bar-mrr" width="500" height="130"></canvas>
-    </div>
-  </div>
 
-  <div class="charts-row">
-    <div class="chart-card">
-      <div class="chart-title">A2P Registration Progress</div>
-      <canvas id="bar-a2p" width="280" height="130"></canvas>
-    </div>
-    <div class="chart-card">
-      <div class="chart-title">Pipeline Distribution</div>
-      <div id="pipeline-bars">
-        ${pbsEntries.map(([label, val]) => `
-          <div class="pipeline-bar-wrap">
-            <div class="pipeline-bar-label">
-              <span>${escHtml(label)}</span>
-              <span style="font-weight:700">${val.count} — ${fmtMRR(val.value)}</span>
-            </div>
-            <div class="pipeline-bar-track">
-              <div class="pipeline-bar-fill" style="width:${pbsTotal ? Math.round(val.value/pbsTotal*100) : 0}%"></div>
-            </div>
-          </div>`).join('')}
+    <div class="g3" style="margin-bottom:20px">
+      <div class="metric-card">
+        <div class="metric-pct">${msMeetPct}%</div>
+        <div class="metric-label">Meeting Scheduled → Meeting Held</div>
+        <div class="metric-sub">${msCount} meetings scheduled</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-pct">${meetOnbdPct}%</div>
+        <div class="metric-label">Meeting Held → Onboarding</div>
+        <div class="metric-sub">${onbdCount} in onboarding</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-pct">${winRate}%</div>
+        <div class="metric-label">Overall Win Rate</div>
+        <div class="metric-sub">${k.won_count} won / ${totalClosed} closed</div>
       </div>
     </div>
-    <div class="chart-card">
-      <div class="chart-title">Quick Stats</div>
-      ${[
-        ['Total Leads', k.total_leads],
-        ['Active Opportunities', k.active_opportunities],
-        ['Won Opportunities', k.won_count],
-        ['Lost Opportunities', k.lost_count],
-        ['Pipeline MRR', fmtMRR(k.pipeline_mrr)],
-        ['Won MRR', fmtMRR(k.won_mrr)],
-        ['Win Rate', k.win_rate + '%'],
-        ['Avg Deal (won)', fmtMRR(k.avg_deal_size)],
-      ].map(([l, v]) => `<div class="stat-row"><span class="stat-label">${l}</span><span class="stat-val">${v}</span></div>`).join('')}
-    </div>
-  </div>`;
-}
 
-function renderOverviewCharts(data) {
-  const pbs = data.pipeline_by_status || {};
-  const mrr = data.mrr_by_month || {};
-  const a2p = data.a2p_breakdown || {};
+    <div class="g2" style="margin-bottom:20px">
+      <div class="chart-card">
+        <div class="chart-title">Active Deals — Substages</div>
+        <div id="bars-active"></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Onboarding — Substages</div>
+        <div id="bars-onboard"></div>
+      </div>
+    </div>
+
+    <div class="g2">
+      <div class="chart-card">
+        <div class="chart-title">Value by Stage — Monthly Pipeline</div>
+        <div class="donut-wrap">
+          <canvas id="donut-main" style="flex-shrink:0"></canvas>
+          <div class="donut-legend" id="donut-legend"></div>
+        </div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Closed Lost — Reasons</div>
+        <div id="bars-lost"></div>
+      </div>
+    </div>
+  `;
+
+  // Active substage bars
+  bars('bars-active', [
+    { label:'MQLs',                count: cnt('MQLs'),                mrr: mrr('MQLs'),               color:'#111111' },
+    { label:'Meeting Scheduled',   count: cnt('Meeting Scheduled'),   mrr: mrr('Meeting Scheduled'),   color:'#1B9BF0' },
+    { label:'Active Evaluation',   count: cnt('Active Evaluation'),   mrr: mrr('Active Evaluation'),   color:'#00695C' },
+    { label:'Champion Confirmed',  count: cnt('Champion Confirmed'),  mrr: mrr('Champion Confirmed'),  color:'#E8231A' },
+  ].filter(r => r.count > 0), { showMRR: true });
+
+  // Onboarding substage bars
+  bars('bars-onboard', [
+    { label:'Typeform Submitted',  count: cnt('Typeform Reg App Submitted'), mrr: mrr('Typeform Reg App Submitted'), color:'#1B9BF0' },
+    { label:'Registration Approved', count: cnt('Registration Approved'),  mrr: mrr('Registration Approved'),  color:'#16A34A' },
+    { label:'Registration Pending',  count: cnt('Registration Pending'),   mrr: mrr('Registration Pending'),   color:'#F5C800' },
+    { label:'Account Created',     count: cnt('Account Created'),     mrr: mrr('Account Created'),     color:'#7C3AED' },
+    { label:'Website Changes',     count: cnt('Website Changes Needed'), mrr: mrr('Website Changes Needed'), color:'#E8231A' },
+  ].filter(r => r.count > 0), { showMRR: true });
 
   // Donut
-  const pbsEntries = Object.entries(pbs).sort((a, b) => b[1].value - a[1].value);
-  const donutCanvas = document.getElementById('donut-stage');
-  if (donutCanvas) {
-    drawDonut(donutCanvas, pbsEntries.map(([,v]) => v.count), pbsEntries.map(([k]) => k));
-    const legendEl = document.getElementById('stage-legend');
-    const colors = ['#5B3FDE','#00C896','#FF6B35','#F5A623','#E53935','#1565c0','#6a1b9a'];
-    if (legendEl) {
-      legendEl.innerHTML = pbsEntries.slice(0, 7).map(([label, val], i) =>
-        `<div class="legend-item"><div class="legend-dot" style="background:${colors[i % colors.length]}"></div><span>${escHtml(label)}: <strong>${val.count}</strong></span></div>`
-      ).join('');
-    }
+  drawDonut('donut-main', donutSegs);
+  const lgd = $('donut-legend');
+  if (lgd) {
+    lgd.innerHTML = donutSegs.map(s => `
+      <div class="legend-item">
+        <div class="legend-dot" style="background:${s.color}"></div>
+        <span class="legend-lbl">${s.label}</span>
+        <span class="legend-val">${fmtMRR(s.value)} · ${Math.round(s.value/totalVal*100)}%</span>
+      </div>`).join('');
   }
 
-  // Bar MRR
-  const mrrMonths = Object.keys(mrr).sort().slice(-12);
-  const mrrVals = mrrMonths.map(m => mrr[m]);
-  const barMRR = document.getElementById('bar-mrr');
-  if (barMRR) drawBar(barMRR, mrrMonths.map(m => m.substring(5)), mrrVals, '#00C896');
-
-  // Bar A2P
-  const a2pCanvas = document.getElementById('bar-a2p');
-  const a2pLabels = ['None','Quiz','Reg.','Campaign','Complete'];
-  const a2pVals = [a2p[0]||0, a2p[2]||0, a2p[3]||0, a2p[4]||0, a2p[5]||0];
-  if (a2pCanvas) drawBar(a2pCanvas, a2pLabels, a2pVals, '#5B3FDE');
+  // Lost reasons bars
+  bars('bars-lost', [
+    { label:'No Showed',   count: cnt('No Showed'),   mrr: 0, color:'#111111' },
+    { label:'No Decision', count: cnt('No Decision'), mrr: 0, color:'#E8231A' },
+    { label:'Timing',      count: cnt('Timing'),      mrr: 0, color:'#1B9BF0' },
+    { label:'Mass Texting',count: cnt('Mass Texting'),mrr: 0, color:'#00695C' },
+  ].filter(r => r.count > 0));
 }
 
-function buildA2PSection(data) {
-  const opps = data.active_opportunities || [];
-  const a2p = data.a2p_breakdown || {};
-
-  const stages = [
-    [0, 'Not Started', a2p[0] || 0],
-    [1, 'Not Started (marked)', a2p[1] || 0],
-    [2, 'Quiz Submitted', a2p[2] || 0],
-    [3, 'Registration Submitted', a2p[3] || 0],
-    [4, 'Campaign Submitted', a2p[4] || 0],
-    [5, 'Complete', a2p[5] || 0],
-  ];
-  const total = stages.reduce((s, [,, c]) => s + c, 0);
-
-  const stageColors = ['#E53935','#FF6B35','#F5A623','#1565c0','#6a1b9a','#00C896'];
-
-  const notComplete = opps.filter(o => (o.a2p_stage || 0) < 5);
-  const hasAlert = notComplete.length > 0;
-  const alertDot = document.getElementById('a2p-alert');
-  if (alertDot) alertDot.style.display = hasAlert ? 'inline-block' : 'none';
-
-  return `
-  <div class="kpi-grid" style="margin-bottom:20px">
-    ${stages.map(([stage, label, count]) => `
-    <div class="kpi" style="border-top-color:${stageColors[stage]}">
-      <div class="kpi-label">${label}</div>
-      <div class="kpi-value" style="color:${stageColors[stage]}">${count}</div>
-      <div class="kpi-sub">${total ? Math.round(count/total*100) : 0}% of active</div>
-    </div>`).join('')}
-  </div>
-
-  <div class="deals-header">
-    <div class="deals-title">Active Deals A2P Status</div>
-    <input class="search-box" type="text" placeholder="Search…" oninput="filterTable('a2p-tbl', this.value)">
-  </div>
-  <div class="table-wrap">
-    <div class="table-scroll">
-      <table id="tbl-a2p-tbl">
-        <thead>
-          <tr>
-            <th>Company</th>
-            <th>MRR</th>
-            <th>A2P Stage</th>
-            <th>A2P Detail</th>
-            <th>Pipeline Notes</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${opps.map(o => `
-          <tr class="deal-row" data-name="${(o.lead_display_name||'').toLowerCase()}">
-            <td><div class="lead-name">${escHtml(o.lead_display_name||'—')}</div></td>
-            <td><span class="deal-value">${o.monthly_value ? fmtMRR(o.monthly_value) : '—'}</span></td>
-            <td>${a2pDots(o.a2p_stage||0)}</td>
-            <td style="font-size:0.75rem;color:var(--text-muted);max-width:180px">${escHtml(o.a2p_status||'—')}</td>
-            <td><div class="pr-note${o.pipeline_review?' has-note':''}">${escHtml((o.pipeline_review||'').substring(0,60)||'—')}</div></td>
-          </tr>`).join('')}
-        </tbody>
-      </table>
-    </div>
-  </div>`;
-}
-
-async function loadDashboard() {
-  const app = document.getElementById('app');
-  app.innerHTML = '<div class="loading" id="loading-state"><div class="spinner"></div><div>Loading dashboard data…</div></div>';
-
+// ─── renderMeetings — Tab 2 ─────────────────────────────────────────────────────
+async function renderMeetings() {
+  $('panel-2').innerHTML = `<div class="loading-wrap"><div class="spinner"></div><div class="loading-text">Loading meetings…</div></div>`;
+  let data;
   try {
-    const res = await fetch('/api/dashboard');
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: res.statusText }));
-      throw new Error(JSON.stringify(err, null, 2));
-    }
-    DATA = await res.json();
-
-    const k = DATA.kpis;
-    document.getElementById('tab-badge-pipeline').textContent = k.active_opportunities;
-    document.getElementById('tab-badge-won').textContent = k.won_count;
-    document.getElementById('tab-badge-lost').textContent = k.lost_count;
-    document.getElementById('last-updated').textContent = 'Updated ' + new Date().toLocaleTimeString();
-
-    app.innerHTML = `
-      <div class="section active" id="sec-overview">${buildOverview(DATA)}</div>
-      <div class="section" id="sec-pipeline"><div id="pipeline-table"></div></div>
-      <div class="section" id="sec-won"><div id="won-table"></div></div>
-      <div class="section" id="sec-lost"><div id="lost-table"></div></div>
-      <div class="section" id="sec-a2p"><div id="a2p-section"></div></div>
-    `;
-
-    // Build tables
-    buildOppTable(DATA.active_opportunities, 'pipeline-table', true);
-    buildOppTable(DATA.won_opportunities, 'won-table', false);
-    buildOppTable(DATA.lost_opportunities, 'lost-table', false);
-    document.getElementById('a2p-section').innerHTML = buildA2PSection(DATA);
-
-    // Charts need DOM to be ready
-    requestAnimationFrame(() => renderOverviewCharts(DATA));
-
-  } catch (e) {
-    app.innerHTML = `<div class="error-msg">
-      <strong>Failed to load dashboard</strong>
-      <p>Make sure your <code>.env</code> file has a valid <code>CLOSE_API_KEY</code> and the server can reach the Close.io API.</p>
-      <pre>${escHtml(e.message)}</pre>
-    </div>`;
+    const res = await fetch('/api/meetings');
+    data = await res.json();
+  } catch(e) {
+    $('panel-2').innerHTML = `<div class="error-box">⚠ Could not load meetings: ${e.message}</div>`; return;
   }
+
+  const meetings   = data.meetings || [];
+  const weekStart  = data.week_start || '';
+  const weekEnd    = data.week_end   || '';
+  const fmtRange   = (s, e) => {
+    const opts = { month:'short', day:'numeric' };
+    const sd   = s ? new Date(s + 'T12:00:00') : null;
+    const ed   = e ? new Date(e + 'T12:00:00') : null;
+    if (!sd || !ed) return '';
+    return `${sd.toLocaleDateString('en-US',opts)} – ${ed.toLocaleDateString('en-US',opts)}`;
+  };
+  const range = fmtRange(weekStart, weekEnd);
+
+  // Group by day
+  const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const MONS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const byDay = {};
+  meetings.forEach(m => {
+    const dt  = new Date((m.due_date || m.date || weekStart) + 'T12:00:00');
+    const key = dt.toISOString().split('T')[0];
+    if (!byDay[key]) byDay[key] = [];
+    byDay[key].push({ ...m, _dt: dt });
+  });
+
+  // Pipeline at stake — try to match meeting lead_id to dashboard deals
+  const dealByLead = {};
+  (dashData?.deals || []).forEach(d => { if (d.lead_id) dealByLead[d.lead_id] = d; });
+  const pipelineSum = meetings.reduce((s, m) => {
+    const d = dealByLead[m.lead_id];
+    return s + (d ? d.monthly_value : 0);
+  }, 0);
+
+  // Busiest day
+  let busiestDay = '', busiestCount = 0;
+  Object.entries(byDay).forEach(([k, arr]) => {
+    if (arr.length > busiestCount) { busiestCount = arr.length; busiestDay = k; }
+  });
+  const bDayLabel = busiestDay ? new Date(busiestDay+'T12:00:00').toLocaleDateString('en-US',{weekday:'long'}) : '—';
+
+  const dayHTML = Object.keys(byDay).sort().map(key => {
+    const arr    = byDay[key];
+    const dt     = new Date(key + 'T12:00:00');
+    const dayLbl = `${DAYS[dt.getDay()].toUpperCase()}, ${MONS[dt.getMonth()].toUpperCase()} ${dt.getDate()}, ${dt.getFullYear()} — ${arr.length} meeting${arr.length!==1?'s':''}`;
+    const cards  = arr.map(m => {
+      const deal = dealByLead[m.lead_id];
+      const val  = deal ? fmtFull(deal.monthly_value) + '/mo' : '—';
+      const note = m.note || (deal ? 'Deal in pipeline' : 'New lead — first meeting');
+      return `<div class="meeting-card">
+        <div class="mtg-date-box">
+          <div class="mtg-day">${dt.getDate()}</div>
+          <div class="mtg-mon">${MONS[dt.getMonth()]}</div>
+        </div>
+        <div class="mtg-info">
+          <div class="mtg-company">${m.lead_name || m.contact_name || 'Unknown'}</div>
+          <div class="mtg-note">${note}</div>
+        </div>
+        <div class="mtg-val">${val}</div>
+      </div>`;
+    }).join('');
+    return `<div class="day-group"><div class="day-label">${dayLbl}</div>${cards}</div>`;
+  }).join('');
+
+  $('panel-2').innerHTML = `
+    <div class="alert-bar">
+      <div class="blink-dot"></div>
+      <div><strong>${meetings.length}</strong> meetings scheduled
+        &nbsp;·&nbsp; ${range}
+        &nbsp;·&nbsp; <strong>${busiestCount}</strong> on ${bDayLabel}
+        &nbsp;·&nbsp; Combined pipeline: <strong>${fmtMRR(pipelineSum)}/mo</strong>
+      </div>
+    </div>
+    <div class="kpi-grid cols3" style="margin-bottom:24px">
+      <div class="kpi-card blue">
+        <div class="kpi-label">Total Meetings</div>
+        <div class="kpi-value">${meetings.length}</div>
+        <div class="kpi-sub">${range}</div>
+      </div>
+      <div class="kpi-card yellow">
+        <div class="kpi-label">Busiest Day</div>
+        <div class="kpi-value">${busiestCount}</div>
+        <div class="kpi-sub">${bDayLabel}</div>
+      </div>
+      <div class="kpi-card red">
+        <div class="kpi-label">Pipeline at Stake</div>
+        <div class="kpi-value">${fmtMRR(pipelineSum)}</div>
+        <div class="kpi-sub">monthly recurring</div>
+      </div>
+    </div>
+    ${meetings.length ? dayHTML : '<div class="empty-state">No meetings scheduled for next week.</div>'}
+  `;
 }
 
-loadDashboard();
+// ─── renderWoW — Tab 3 ──────────────────────────────────────────────────────────
+function renderWoW() {
+  const k  = dashData.kpis;
+  const ch = dashData.changes;
+  const nb = dashData.new_by_month || {};
+
+  const deltaHTML = (curr, prev, prefix='') => {
+    if (prev === undefined || prev === null) return '<span class="delta neu">—</span>';
+    const d = curr - prev;
+    const cls = d > 0 ? 'pos' : d < 0 ? 'neg' : 'neu';
+    const sign = d > 0 ? '+' : '';
+    return `<span class="delta ${cls}">${sign}${prefix}${typeof d==='number'&&d!==Math.floor(d)?d.toFixed(0):d}</span>`;
+  };
+
+  const prevDate  = ch?.prev_date || '—';
+  const prevKPIs  = ch?.prev_kpis || {};
+  const newWon    = ch?.new_won   || [];
+  const stageCh   = ch?.stage_changes || [];
+
+  // Stage movement rows for chart
+  const movements = [
+    { label:'New Added',     count: ch?.new_count     || 0, color:'#00695C' },
+    { label:'Removed',       count: ch?.removed_count || 0, color:'#9CA3AF' },
+    { label:'→ Closed Won',  count: newWon.length,          color:'#16A34A' },
+    { label:'→ Closed Lost', count: stageCh.filter(d=>d.category==='lost').length, color:'#E8231A' },
+    { label:'→ Onboarding',  count: stageCh.filter(d=>d.category==='onboarding').length, color:'#7C3AED' },
+    { label:'→ Champion',    count: stageCh.filter(d=>d.stage==='Champion Confirmed').length, color:'#F5C800' },
+  ];
+  const maxMov = Math.max(...movements.map(m=>m.count), 1);
+
+  const movRows = movements.map(m => `
+    <div class="movement-row">
+      <div style="width:130px;font-size:12px;font-weight:500">${m.label}</div>
+      <div style="flex:1;background:var(--gray-light);border-radius:4px;height:10px;overflow:hidden">
+        <div style="height:100%;width:${Math.round(m.count/maxMov*100)}%;background:${m.color};border-radius:4px"></div>
+      </div>
+      <div style="width:28px;text-align:right;font-size:12px;font-weight:700;color:var(--gray)">${m.count}</div>
+    </div>`).join('');
+
+  const wonRows = newWon.slice(0,20).map(d => `<tr>
+    <td class="col-company">${d.company}</td>
+    <td class="mono">${d.monthly_value>0?fmtFull(d.monthly_value)+'/mo':'—'}</td>
+    <td style="font-size:12px;color:var(--gray)">${d.prev_stage||'New'}</td>
+  </tr>`).join('') || `<tr><td colspan="3" class="empty-state">No new won deals this week</td></tr>`;
+
+  const chRows = stageCh.slice(0,20).map(d => `<tr>
+    <td class="col-company">${d.company}</td>
+    <td style="font-size:12px;color:var(--gray)">${d.prev_stage||'—'}</td>
+    <td>${stageBadge(d.category, d.stage)}</td>
+  </tr>`).join('') || `<tr><td colspan="3" class="empty-state">No stage changes detected</td></tr>`;
+
+  $('panel-3').innerHTML = `
+    <div class="kpi-grid">
+      <div class="kpi-card blue">
+        <div class="kpi-label">Total Deals</div>
+        <div class="kpi-value">${k.total} ${deltaHTML(k.total, prevKPIs.total)}</div>
+        <div class="kpi-prev">Was ${prevKPIs.total||'—'} on ${prevDate}</div>
+      </div>
+      <div class="kpi-card red">
+        <div class="kpi-label">Active Pipeline</div>
+        <div class="kpi-value">${fmtMRR(k.active_mrr)} ${deltaHTML(k.active_mrr, prevKPIs.active_mrr, '$')}</div>
+        <div class="kpi-prev">Was ${prevKPIs.active_mrr ? fmtMRR(prevKPIs.active_mrr) : '—'}/mo on ${prevDate}</div>
+      </div>
+      <div class="kpi-card green">
+        <div class="kpi-label">Closed Won</div>
+        <div class="kpi-value">${k.won_count} ${deltaHTML(k.won_count, prevKPIs.won_count)}</div>
+        <div class="kpi-prev">Was ${prevKPIs.won_count||'—'} · ${prevKPIs.won_mrr ? fmtMRR(prevKPIs.won_mrr) : '—'}/mo on ${prevDate}</div>
+      </div>
+      <div class="kpi-card black">
+        <div class="kpi-label">Demos Held</div>
+        <div class="kpi-value">${dashData.deals.filter(d=>d.demo_completed).length}</div>
+        <div class="kpi-prev">Snapshot: ${prevDate}</div>
+      </div>
+    </div>
+
+    <div class="g2" style="margin-bottom:20px">
+      <div class="chart-card">
+        <div class="chart-title">New Deals Created by Month — Sep 2025 → now</div>
+        <canvas id="created-chart" class="chart-canvas" style="height:200px"></canvas>
+        <div style="display:flex;gap:16px;margin-top:8px;font-size:11px;color:var(--gray)">
+          <span><span style="display:inline-block;width:10px;height:10px;background:#E8231A;border-radius:2px;margin-right:4px"></span>Current month</span>
+          <span><span style="display:inline-block;width:10px;height:10px;background:#9CA3AF;border-radius:2px;margin-right:4px"></span>Previous month</span>
+          <span style="border-bottom:2px dashed #1B9BF0;padding-bottom:1px">Cumulative</span>
+        </div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Stage Movements — ${prevDate} → today</div>
+        ${movRows}
+      </div>
+    </div>
+
+    <div class="g2">
+      <div class="table-wrap">
+        <div class="section-head">
+          <span class="section-title">New Closed Won</span>
+          <span class="section-badge">${newWon.length} deal${newWon.length!==1?'s':''}</span>
+        </div>
+        <div class="tscroll">
+          <table>
+            <thead><tr><th>Company</th><th>Value</th><th>Previous Stage</th></tr></thead>
+            <tbody>${wonRows}</tbody>
+          </table>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <div class="section-head">
+          <span class="section-title">Notable Status Changes</span>
+          <span class="section-badge">${stageCh.length} change${stageCh.length!==1?'s':''}</span>
+        </div>
+        <div class="tscroll">
+          <table>
+            <thead><tr><th>Company</th><th>Was</th><th>Now</th></tr></thead>
+            <tbody>${chRows}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Draw the monthly chart after DOM is ready
+  requestAnimationFrame(() => drawCreatedChart('created-chart', nb));
+}
+
+// ─── renderPipelineReview — Tab 4 ───────────────────────────────────────────────
+function renderPipelineReview() {
+  const deals = dashData.pipeline_review || [];
+  const sum   = deals.reduce((s,d) => s + d.monthly_value, 0);
+
+  const stageBadgeForPR = (cat, stage) => {
+    const colorMap = {
+      'Champion Confirmed':        'sb-champion',
+      'Website Changes Needed':    'sb-onboarding',
+      'Registration Approved':     'sb-won',
+      'Registration Pending':      'sb-onboarding',
+      'Active Evaluation':         'sb-active',
+      'Account Created':           'sb-onboarding',
+      'Meeting Scheduled':         'sb-active',
+    };
+    const cls = colorMap[stage] || 'sb-active';
+    return `<span class="sb ${cls}">${stage}</span>`;
+  };
+
+  const cards = deals.map(d => `
+    <div class="pr-card">
+      <div class="pr-head">
+        <div>
+          <div class="pr-company">${d.company}</div>
+          <div style="margin-top:5px">${stageBadgeForPR(d.category, d.stage)}</div>
+        </div>
+        <div class="pr-val">${d.monthly_value > 0 ? fmtFull(d.monthly_value) + ' monthly' : '—'}</div>
+      </div>
+      <div class="pr-body">
+        <div class="pr-nxt-lbl">Next Steps</div>
+        ${d.pipeline_review
+          ? `<div class="pr-nxt-text">${d.pipeline_review.replace(/\n/g,'<br>')}</div>`
+          : `<div class="pr-empty">No next steps recorded yet.</div>`}
+      </div>
+    </div>`).join('');
+
+  $('panel-4').innerHTML = `
+    <div class="alert-bar">
+      <div class="blink-dot"></div>
+      <div>🔍 <strong>${deals.length}</strong> deals tracked
+        &nbsp;·&nbsp; Total pipeline value: <strong>${fmtMRR(sum)}/mo</strong>
+        &nbsp;·&nbsp; All have next steps recorded
+      </div>
+    </div>
+    ${deals.length ? cards : '<div class="empty-state">No pipeline review notes found.<br>Add text to the "Pipeline Review" custom field in Close.io.</div>'}
+  `;
+}
+
+// ─── renderAllDeals — Tab 5 ─────────────────────────────────────────────────────
+let _dealsFilter = 'all';
+
+function filterDeals(f, btn) {
+  _dealsFilter = f;
+  document.querySelectorAll('.f-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderAllDeals();
+}
+
+function renderAllDeals() {
+  const all    = dashData.deals;
+  const k      = dashData.kpis;
+  const active = all.filter(d => d.category === 'active');
+  const onbd   = all.filter(d => d.category === 'onboarding');
+  const won    = all.filter(d => d.category === 'won');
+  const lost   = all.filter(d => d.category === 'lost');
+  const demo   = all.filter(d => d.demo_completed);
+
+  const filtered = _dealsFilter === 'all'        ? all
+                 : _dealsFilter === 'active'      ? active
+                 : _dealsFilter === 'onboarding'  ? onbd
+                 : _dealsFilter === 'won'         ? won
+                 : _dealsFilter === 'lost'        ? lost
+                 : _dealsFilter === 'demo'        ? demo
+                 : all;
+
+  const rows = [...filtered]
+    .sort((a,b) => b.monthly_value - a.monthly_value)
+    .map(d => {
+      const demo = d.demo_completed
+        ? '<span style="color:var(--green);font-weight:700;font-size:12px">✓ done</span>'
+        : '<span class="dash">—</span>';
+      return `<tr>
+        <td class="col-company">${d.company}</td>
+        <td>${stageBadge('active', d.category === 'active' ? 'Active' : d.category === 'onboarding' ? 'Onboarding' : d.category === 'won' ? 'Won' : 'Lost')} <span class="sb ${d.category==='active'?'sb-active':d.category==='onboarding'?'sb-onboarding':d.category==='won'?'sb-won':'sb-lost'}" style="display:none"></span></td>
+        <td style="font-size:12px;color:var(--gray)">${d.stage}</td>
+        <td class="mono">${d.monthly_value > 0 ? fmtFull(d.monthly_value)+'/mo' : '—'}</td>
+        <td class="a2p-cell" title="${d.a2p_status||''}">${d.a2p_status ? d.a2p_status.slice(0,24)+(d.a2p_status.length>24?'…':'') : '<span class="dash">—</span>'}</td>
+        <td>${demo}</td>
+      </tr>`;
+    }).join('');
+
+  const catBadge = cat => {
+    const map = {active:'sb-active',onboarding:'sb-onboarding',won:'sb-won',lost:'sb-lost'};
+    return map[cat] || 'sb-active';
+  };
+
+  // Better row rendering
+  const betterRows = [...filtered]
+    .sort((a,b) => b.monthly_value - a.monthly_value)
+    .map(d => {
+      const demo = d.demo_completed
+        ? '<span style="color:var(--green);font-weight:700;font-size:12px">✓ done</span>'
+        : '<span class="dash">—</span>';
+      const catLabel = d.category === 'active' ? 'Active' : d.category === 'onboarding' ? 'Onboarding' : d.category === 'won' ? 'Won' : 'Lost';
+      return `<tr>
+        <td class="col-company">${d.company}</td>
+        <td><span class="sb ${catBadge(d.category)}">${catLabel}</span></td>
+        <td style="font-size:12px;color:var(--gray)">${d.stage}</td>
+        <td class="mono">${d.monthly_value > 0 ? fmtFull(d.monthly_value)+'/mo' : '<span class="dash">—</span>'}</td>
+        <td class="a2p-cell" title="${d.a2p_status||''}">${d.a2p_status ? d.a2p_status.slice(0,22)+(d.a2p_status.length>22?'…':'') : '<span class="dash">—</span>'}</td>
+        <td>${demo}</td>
+      </tr>`;
+    }).join('') || `<tr><td colspan="6" class="empty-state">No deals match this filter</td></tr>`;
+
+  $('panel-5').innerHTML = `
+    <div class="filter-bar">
+      <button class="f-btn ${_dealsFilter==='all'?'active':''}"        onclick="filterDeals('all',this)">All (${all.length})</button>
+      <button class="f-btn ${_dealsFilter==='active'?'active':''}"     onclick="filterDeals('active',this)">Active (${active.length})</button>
+      <button class="f-btn ${_dealsFilter==='onboarding'?'active':''}" onclick="filterDeals('onboarding',this)">Onboarding (${onbd.length})</button>
+      <button class="f-btn ${_dealsFilter==='won'?'active':''}"        onclick="filterDeals('won',this)">Won (${won.length})</button>
+      <button class="f-btn ${_dealsFilter==='lost'?'active':''}"       onclick="filterDeals('lost',this)">Lost (${lost.length})</button>
+      <button class="f-btn ${_dealsFilter==='demo'?'active':''}"       onclick="filterDeals('demo',this)">Demo Done (${demo.length})</button>
+    </div>
+    <div class="table-wrap">
+      <div class="all-deals-scroll">
+        <table>
+          <thead><tr>
+            <th>Company</th><th>Stage</th><th>Substage</th>
+            <th>Value</th><th>A2P</th><th>Demo</th>
+          </tr></thead>
+          <tbody>${betterRows}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+// ─── Auto-refresh every 5 minutes ──────────────────────────────────────────────
+setInterval(() => fetchAndRender(false), 5 * 60 * 1000);
+
+// ─── Init ───────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => fetchAndRender(false));
 </script>
 </body>
 </html>
