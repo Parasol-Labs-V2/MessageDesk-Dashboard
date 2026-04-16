@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MessageDesk Sales Dashboard</title>
+<style>
+  :root {
+    --brand: #5B3FDE;
+    --brand-dark: #3d2aad;
+    --brand-light: #ede9ff;
+    --accent: #00C896;
+    --accent2: #FF6B35;
+    --warn: #F5A623;
+    --danger: #E53935;
+    --text: #1a1a2e;
+    --text-muted: #6b7280;
+    --border: #e5e7eb;
+    --bg: #f3f4f8;
+    --card: #ffffff;
+    --shadow: 0 1px 4px rgba(0,0,0,0.08);
+    --radius: 10px;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-size: 14px; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  /* HEADER */
+  header {
+    background: linear-gradient(135deg, var(--brand-dark) 0%, var(--brand) 100%);
+    color: #fff;
+    padding: 0 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 56px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: 0 2px 8px rgba(91,63,222,0.3);
+  }
+  .logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.1rem; letter-spacing: -0.3px; }
+  .logo svg { width: 28px; height: 28px; }
+  .header-right { display: flex; align-items: center; gap: 16px; font-size: 0.8rem; opacity: 0.85; }
+  #last-updated { font-size: 0.75rem; opacity: 0.7; }
+  .refresh-btn {
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.25);
+    color: #fff;
+    padding: 5px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    transition: background 0.2s;
+  }
+  .refresh-btn:hover { background: rgba(255,255,255,0.25); }
+
+  /* TABS */
+  .tabs {
+    background: var(--card);
+    border-bottom: 2px solid var(--border);
+    padding: 0 24px;
+    display: flex;
+    gap: 0;
+    position: sticky;
+    top: 56px;
+    z-index: 99;
+    box-shadow: var(--shadow);
+  }
+  .tab {
+    padding: 12px 20px;
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+    font-weight: 500;
+    color: var(--text-muted);
+    transition: all 0.15s;
+    white-space: nowrap;
+    font-size: 0.85rem;
+  }
+  .tab:hover { color: var(--brand); }
+  .tab.active { color: var(--brand); border-bottom-color: var(--brand); }
+  .tab-badge {
+    display: inline-block;
+    background: var(--brand-light);
+    color: var(--brand);
+    border-radius: 10px;
+    padding: 1px 7px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    margin-left: 6px;
+  }
+
+  /* MAIN */
+  main { padding: 20px 24px 40px; max-width: 1600px; margin: 0 auto; }
+
+  /* SECTION */
+  .section { display: none; }
+  .section.active { display: block; }
+
+  /* KPI GRID */
+  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 20px; }
+  @media (max-width: 1200px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 600px) { .kpi-grid { grid-template-columns: 1fr; } }
+
+  .kpi {
+    background: var(--card);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    border-top: 3px solid var(--brand);
+    box-shadow: var(--shadow);
+    position: relative;
+    overflow: hidden;
+  }
+  .kpi::after {
+    content: '';
+    position: absolute;
+    top: 0; right: 0;
+    width: 60px; height: 60px;
+    background: var(--brand-light);
+    border-radius: 50%;
+    transform: translate(20px, -20px);
+    opacity: 0.5;
+  }
+  .kpi.green { border-top-color: var(--accent); }
+  .kpi.green::after { background: #e6faf4; }
+  .kpi.orange { border-top-color: var(--accent2); }
+  .kpi.orange::after { background: #fff0eb; }
+  .kpi.yellow { border-top-color: var(--warn); }
+  .kpi.yellow::after { background: #fff8ec; }
+  .kpi.red { border-top-color: var(--danger); }
+  .kpi.red::after { background: #ffeaea; }
+
+  .kpi-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); font-weight: 600; margin-bottom: 6px; }
+  .kpi-value { font-size: 2rem; font-weight: 700; line-height: 1; color: var(--text); }
+  .kpi-sub { font-size: 0.72rem; color: var(--text-muted); margin-top: 6px; }
+  .kpi-trend { font-size: 0.75rem; font-weight: 600; margin-top: 4px; }
+  .kpi-trend.up { color: var(--accent); }
+  .kpi-trend.down { color: var(--danger); }
+
+  /* CHARTS ROW */
+  .charts-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-bottom: 20px; }
+  @media (max-width: 1100px) { .charts-row { grid-template-columns: 1fr 1fr; } }
+
+  .chart-card {
+    background: var(--card);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    box-shadow: var(--shadow);
+  }
+  .chart-title { font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 14px; }
+  canvas { display: block; }
+
+  /* ALERT DOT */
+  .alert-dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    background: var(--danger);
+    border-radius: 50%;
+    margin-left: 6px;
+    animation: blink 1.4s ease-in-out infinite;
+  }
+  @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
+
+  /* DEALS TABLE */
+  .deals-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .deals-title { font-size: 0.95rem; font-weight: 700; color: var(--text); }
+  .search-box {
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.8rem;
+    width: 220px;
+    outline: none;
+    transition: border 0.2s;
+  }
+  .search-box:focus { border-color: var(--brand); }
+
+  .table-wrap {
+    background: var(--card);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .table-scroll { overflow-x: auto; max-height: 560px; overflow-y: auto; }
+  .table-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+  .table-scroll::-webkit-scrollbar-track { background: #f1f1f1; }
+  .table-scroll::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  thead th {
+    background: #fafafa;
+    border-bottom: 2px solid var(--border);
+    padding: 10px 12px;
+    text-align: left;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    font-weight: 700;
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+  }
+  thead th.sortable { cursor: pointer; user-select: none; }
+  thead th.sortable:hover { color: var(--brand); }
+  .deal-row td {
+    padding: 9px 12px;
+    border-bottom: 1px solid #f0f0f0;
+    vertical-align: middle;
+  }
+  .deal-row:hover td { background: #faf9ff; }
+  .deal-row:last-child td { border-bottom: none; }
+
+  .lead-name { font-weight: 600; color: var(--text); max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .deal-value { font-weight: 700; color: var(--brand); font-size: 0.85rem; }
+  .deal-note { color: var(--text-muted); font-size: 0.75rem; max-width: 180px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* AGE BADGE */
+  .age {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .age.green { background: #e6faf4; color: #00875a; }
+  .age.yellow { background: #fff8e1; color: #b26a00; }
+  .age.red { background: #ffeaea; color: #c62828; }
+
+  /* SCORE CIRCLE */
+  .sc {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    font-size: 0.7rem;
+    font-weight: 700;
+  }
+  .sc.green { background: #e6faf4; color: #00875a; border: 2px solid #00C896; }
+  .sc.yellow { background: #fff8e1; color: #b26a00; border: 2px solid #F5A623; }
+  .sc.red { background: #ffeaea; color: #c62828; border: 2px solid #E53935; }
+
+  /* STATUS BADGES */
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .b-champ { background: #ede9ff; color: #5B3FDE; }
+  .b-active { background: #e3f0ff; color: #1565c0; }
+  .b-onboard { background: #e6faf4; color: #00875a; }
+  .b-won { background: #e6faf4; color: #00875a; }
+  .b-lost { background: #f5f5f5; color: #888; }
+  .b-demo { background: #fff0eb; color: #d84315; }
+  .b-proposal { background: #fff8e1; color: #b26a00; }
+  .b-negotiation { background: #f3e5f5; color: #6a1b9a; }
+  .b-default { background: #f3f4f8; color: #555; }
+
+  /* A2P PROGRESS BAR */
+  .a2p-bar { display: flex; align-items: center; gap: 6px; }
+  .a2p-dots { display: flex; gap: 3px; }
+  .a2p-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #e0e0e0;
+  }
+  .a2p-dot.filled { background: var(--brand); }
+  .a2p-dot.complete { background: var(--accent); }
+  .a2p-label { font-size: 0.68rem; color: var(--text-muted); }
+
+  /* PIPELINE REVIEW */
+  .pr-note {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    max-width: 160px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .pr-note.has-note { color: var(--text); font-style: italic; }
+
+  /* GRID LAYOUTS */
+  .g4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .g3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .g2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+
+  /* LOADING */
+  .loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 200px;
+    flex-direction: column;
+    gap: 12px;
+    color: var(--text-muted);
+  }
+  .spinner {
+    width: 36px; height: 36px;
+    border: 3px solid var(--border);
+    border-top-color: var(--brand);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ERROR */
+  .error-msg {
+    background: #fff5f5;
+    border: 1px solid #fed7d7;
+    border-radius: var(--radius);
+    padding: 20px;
+    color: var(--danger);
+    font-size: 0.85rem;
+  }
+  .error-msg pre { margin-top: 8px; font-size: 0.75rem; white-space: pre-wrap; }
+
+  /* SUMMARY STATS */
+  .stat-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 7px 0;
+    border-bottom: 1px solid #f3f4f8;
+    font-size: 0.82rem;
+  }
+  .stat-row:last-child { border-bottom: none; }
+  .stat-label { color: var(--text-muted); }
+  .stat-val { font-weight: 700; color: var(--text); }
+
+  /* PIPELINE BAR */
+  .pipeline-bar-wrap { margin-bottom: 10px; }
+  .pipeline-bar-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    margin-bottom: 3px;
+  }
+  .pipeline-bar-track {
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .pipeline-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: var(--brand);
+    transition: width 0.5s ease;
+  }
+
+  /* DONUT LEGEND */
+  .donut-wrap { display: flex; align-items: center; gap: 16px; }
+  .donut-legend { flex: 1; }
+  .legend-item { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; font-size: 0.75rem; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+  /* EMPTY STATE */
+  .empty { padding: 40px; text-align: center; color: var(--text-muted); font-size: 0.85rem; }
+
+  /* TOOLTIP */
+  .tooltip-wrap { position: relative; cursor: default; }
+  .tooltip-wrap:hover .tooltip-box { display: block; }
+  .tooltip-box {
+    display: none;
+    position: absolute;
+    bottom: 120%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1a1a2e;
+    color: #fff;
+    font-size: 0.72rem;
+    padding: 5px 10px;
+    border-radius: 6px;
+    white-space: nowrap;
+    z-index: 200;
+    pointer-events: none;
+  }
+  .tooltip-box::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-top-color: #1a1a2e;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="28" height="28" rx="6" fill="rgba(255,255,255,0.15)"/>
+      <path d="M6 9h16M6 14h10M6 19h13" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+      <circle cx="22" cy="19" r="3" fill="#00C896"/>
+    </svg>
+    MessageDesk &nbsp;<span style="opacity:0.5;font-weight:400">Sales Intelligence</span>
+  </div>
+  <div class="header-right">
+    <span id="last-updated"></span>
+    <button class="refresh-btn" onclick="loadDashboard()">↻ Refresh</button>
+  </div>
+</header>
+
+<nav class="tabs">
+  <div class="tab active" onclick="switchTab('overview')">Overview</div>
+  <div class="tab" onclick="switchTab('pipeline')">Pipeline <span class="tab-badge" id="tab-badge-pipeline">—</span></div>
+  <div class="tab" onclick="switchTab('won')">Won <span class="tab-badge" id="tab-badge-won">—</span></div>
+  <div class="tab" onclick="switchTab('lost')">Lost <span class="tab-badge" id="tab-badge-lost">—</span></div>
+  <div class="tab" onclick="switchTab('a2p')">A2P Status <span class="alert-dot" id="a2p-alert" style="display:none"></span></div>
+</nav>
+
+<main id="app">
+  <div class="loading" id="loading-state">
+    <div class="spinner"></div>
+    <div>Loading dashboard data…</div>
+  </div>
+</main>
+
+<script>
+let DATA = null;
+let sortState = {};
+
+function fmt$(n) {
+  if (!n && n !== 0) return '—';
+  if (n >= 1000) return '$' + (n/1000).toFixed(1) + 'k';
+  return '$' + Math.round(n).toLocaleString();
+}
+
+function fmtMRR(n) {
+  if (!n && n !== 0) return '—';
+  return '$' + Math.round(n).toLocaleString() + '/mo';
+}
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach((t, i) => {
+    const tabs = ['overview','pipeline','won','lost','a2p'];
+    t.classList.toggle('active', tabs[i] === name);
+  });
+  document.querySelectorAll('.section').forEach(s => {
+    s.classList.toggle('active', s.id === 'sec-' + name);
+  });
+}
+
+function ageBadge(days) {
+  const cls = days <= 30 ? 'green' : days <= 60 ? 'yellow' : 'red';
+  return `<span class="age ${cls}">${days}d</span>`;
+}
+
+function scoreBadge(score) {
+  if (score == null || score === '') return '—';
+  const n = parseInt(score);
+  const cls = n >= 80 ? 'green' : n >= 65 ? 'yellow' : 'red';
+  return `<span class="sc ${cls}">${n}</span>`;
+}
+
+function statusBadge(label) {
+  if (!label) return '<span class="badge b-default">—</span>';
+  const l = label.toLowerCase();
+  let cls = 'b-default';
+  if (l.includes('champion') || l.includes('champ')) cls = 'b-champ';
+  else if (l.includes('won') || l.includes('closed won')) cls = 'b-won';
+  else if (l.includes('lost') || l.includes('closed lost')) cls = 'b-lost';
+  else if (l.includes('onboard')) cls = 'b-onboard';
+  else if (l.includes('demo')) cls = 'b-demo';
+  else if (l.includes('proposal')) cls = 'b-proposal';
+  else if (l.includes('negotiat')) cls = 'b-negotiation';
+  else if (l.includes('active') || l.includes('prospect')) cls = 'b-active';
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+function a2pDots(stage) {
+  const total = 5;
+  let dots = '';
+  for (let i = 1; i <= total; i++) {
+    const filled = i <= stage;
+    const complete = stage === 5 && filled;
+    dots += `<div class="a2p-dot ${complete ? 'complete' : filled ? 'filled' : ''}"></div>`;
+  }
+  const labels = ['', 'Not Started', 'Quiz Submitted', 'Reg. Submitted', 'Campaign Sub.', 'Complete'];
+  return `<div class="a2p-bar"><div class="a2p-dots">${dots}</div><span class="a2p-label">${labels[stage] || 'N/A'}</span></div>`;
+}
+
+function buildOppTable(opps, containerId, showStatus = true) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  if (!opps || opps.length === 0) {
+    container.innerHTML = '<div class="empty">No opportunities found.</div>';
+    return;
+  }
+
+  const html = `
+  <div class="deals-header">
+    <div class="deals-title">${opps.length} opportunities</div>
+    <input class="search-box" type="text" placeholder="Search by name…" oninput="filterTable('${containerId}', this.value)">
+  </div>
+  <div class="table-wrap">
+    <div class="table-scroll">
+      <table id="tbl-${containerId}">
+        <thead>
+          <tr>
+            <th class="sortable" onclick="sortTable('${containerId}', 0)">Company</th>
+            <th class="sortable" onclick="sortTable('${containerId}', 1)">MRR</th>
+            <th class="sortable" onclick="sortTable('${containerId}', 2)">Age</th>
+            ${showStatus ? '<th>Stage</th>' : ''}
+            <th>A2P</th>
+            <th>Score</th>
+            <th>Pipeline Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${opps.map(o => oppRow(o, showStatus)).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>`;
+  container.innerHTML = html;
+}
+
+function oppRow(o, showStatus) {
+  const monthly = o.monthly_value || 0;
+  const valuePeriod = (o.value_period || '').toLowerCase();
+  let valueDisplay = monthly ? fmtMRR(monthly) : '—';
+  if (valuePeriod === 'annual') valueDisplay += ' <span style="font-size:0.65rem;color:var(--text-muted)">(ann÷12)</span>';
+  if (valuePeriod === 'one_time' || valuePeriod === 'one-time') valueDisplay = fmt$(parseFloat(o.value) || 0) + ' <span style="font-size:0.65rem;color:var(--text-muted)">(1×)</span>';
+
+  const score = o.confidence != null ? o.confidence : '';
+
+  return `<tr class="deal-row"
+    data-name="${(o.lead_display_name || '').toLowerCase()}"
+    data-mrr="${monthly}"
+    data-age="${o.age_days}">
+    <td><div class="lead-name tooltip-wrap">${escHtml(o.lead_display_name || '—')}<span class="tooltip-box">${escHtml(o.lead_display_name || '')}</span></div></td>
+    <td><span class="deal-value">${valueDisplay}</span></td>
+    <td>${ageBadge(o.age_days || 0)}</td>
+    ${showStatus ? `<td>${statusBadge(o.status_label)}</td>` : ''}
+    <td>${a2pDots(o.a2p_stage || 0)}</td>
+    <td>${scoreBadge(score)}</td>
+    <td><div class="pr-note${o.pipeline_review ? ' has-note' : ''} tooltip-wrap">${escHtml((o.pipeline_review || '').substring(0, 40) || '—')}<span class="tooltip-box">${escHtml(o.pipeline_review || 'No notes')}</span></div></td>
+  </tr>`;
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function filterTable(containerId, query) {
+  const tbody = document.querySelector(`#tbl-${containerId} tbody`);
+  if (!tbody) return;
+  const q = query.toLowerCase();
+  tbody.querySelectorAll('tr').forEach(tr => {
+    tr.style.display = tr.dataset.name.includes(q) ? '' : 'none';
+  });
+}
+
+function sortTable(containerId, col) {
+  const key = containerId + '-' + col;
+  const asc = !sortState[key];
+  sortState[key] = asc;
+
+  const tbody = document.querySelector(`#tbl-${containerId} tbody`);
+  if (!tbody) return;
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+
+  rows.sort((a, b) => {
+    let av, bv;
+    if (col === 0) { av = a.dataset.name; bv = b.dataset.name; }
+    else if (col === 1) { av = parseFloat(a.dataset.mrr) || 0; bv = parseFloat(b.dataset.mrr) || 0; }
+    else if (col === 2) { av = parseInt(a.dataset.age) || 0; bv = parseInt(b.dataset.age) || 0; }
+    if (typeof av === 'string') return asc ? av.localeCompare(bv) : bv.localeCompare(av);
+    return asc ? av - bv : bv - av;
+  });
+
+  rows.forEach(r => tbody.appendChild(r));
+}
+
+// CHARTS
+function drawDonut(canvas, segments, labels) {
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  const cx = W / 2, cy = H / 2;
+  const r = Math.min(cx, cy) - 10;
+  const inner = r * 0.55;
+  const total = segments.reduce((s, x) => s + x, 0);
+  if (!total) {
+    ctx.fillStyle = '#e0e0e0';
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(cx, cy, inner, 0, Math.PI * 2); ctx.fill();
+    return;
+  }
+  const colors = ['#5B3FDE','#00C896','#FF6B35','#F5A623','#E53935','#1565c0','#6a1b9a'];
+  let start = -Math.PI / 2;
+  segments.forEach((val, i) => {
+    const angle = (val / total) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, r, start, start + angle);
+    ctx.closePath();
+    ctx.fillStyle = colors[i % colors.length];
+    ctx.fill();
+    start += angle;
+  });
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(cx, cy, inner, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#1a1a2e';
+  ctx.font = `bold 14px -apple-system, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(total, cx, cy);
+}
+
+function drawBar(canvas, labels, values, color) {
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  const pad = { top: 10, right: 10, bottom: 30, left: 50 };
+  const cw = W - pad.left - pad.right;
+  const ch = H - pad.top - pad.bottom;
+  const max = Math.max(...values, 1);
+  const bw = Math.max(6, cw / values.length - 6);
+
+  ctx.fillStyle = '#f0f0f0';
+  ctx.fillRect(pad.left, pad.top, cw, ch);
+
+  // Grid lines
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.top + ch - (i / 4) * ch;
+    ctx.strokeStyle = '#e5e7eb';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + cw, y); ctx.stroke();
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '9px sans-serif';
+    ctx.textAlign = 'right';
+    const label = max > 1000 ? '$' + Math.round((max * i / 4) / 1000) + 'k' : Math.round(max * i / 4);
+    ctx.fillText(label, pad.left - 4, y + 3);
+  }
+
+  values.forEach((v, i) => {
+    const x = pad.left + i * (cw / values.length) + (cw / values.length - bw) / 2;
+    const h = (v / max) * ch;
+    const y = pad.top + ch - h;
+    ctx.fillStyle = color || '#5B3FDE';
+    ctx.beginPath();
+    ctx.roundRect ? ctx.roundRect(x, y, bw, h, [3, 3, 0, 0]) : ctx.rect(x, y, bw, h);
+    ctx.fill();
+    // label
+    ctx.fillStyle = '#6b7280';
+    ctx.font = '8px sans-serif';
+    ctx.textAlign = 'center';
+    const lbl = labels[i] ? labels[i].substring(0, 6) : '';
+    ctx.fillText(lbl, x + bw / 2, H - pad.bottom + 10);
+  });
+}
+
+function buildOverview(data) {
+  const k = data.kpis;
+  const pbs = data.pipeline_by_status || {};
+  const mrr = data.mrr_by_month || {};
+  const a2p = data.a2p_breakdown || {};
+
+  // Sort mrr months
+  const mrrMonths = Object.keys(mrr).sort().slice(-12);
+  const mrrVals = mrrMonths.map(m => mrr[m]);
+
+  // Pipeline status labels + values
+  const pbsEntries = Object.entries(pbs).sort((a, b) => b[1].value - a[1].value);
+  const pbsTotal = pbsEntries.reduce((s, [, v]) => s + v.value, 0);
+
+  return `
+  <div class="kpi-grid">
+    <div class="kpi">
+      <div class="kpi-label">Pipeline MRR</div>
+      <div class="kpi-value">${fmt$(k.pipeline_mrr)}</div>
+      <div class="kpi-sub">${k.active_opportunities} active deals</div>
+    </div>
+    <div class="kpi green">
+      <div class="kpi-label">Won MRR</div>
+      <div class="kpi-value">${fmt$(k.won_mrr)}</div>
+      <div class="kpi-sub">${k.won_count} closed won</div>
+    </div>
+    <div class="kpi orange">
+      <div class="kpi-label">Win Rate</div>
+      <div class="kpi-value">${k.win_rate}%</div>
+      <div class="kpi-sub">${k.won_count}W / ${k.lost_count}L of ${k.closed_total} closed</div>
+    </div>
+    <div class="kpi yellow">
+      <div class="kpi-label">Avg Deal Size</div>
+      <div class="kpi-value">${fmt$(k.avg_deal_size)}</div>
+      <div class="kpi-sub">won MRR avg</div>
+    </div>
+  </div>
+
+  <div class="charts-row">
+    <div class="chart-card">
+      <div class="chart-title">Pipeline by Stage</div>
+      <div class="donut-wrap">
+        <canvas id="donut-stage" width="110" height="110"></canvas>
+        <div class="donut-legend" id="stage-legend"></div>
+      </div>
+    </div>
+    <div class="chart-card" style="grid-column: span 2">
+      <div class="chart-title">Won MRR by Month (last 12)</div>
+      <canvas id="bar-mrr" width="500" height="130"></canvas>
+    </div>
+  </div>
+
+  <div class="charts-row">
+    <div class="chart-card">
+      <div class="chart-title">A2P Registration Progress</div>
+      <canvas id="bar-a2p" width="280" height="130"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Pipeline Distribution</div>
+      <div id="pipeline-bars">
+        ${pbsEntries.map(([label, val]) => `
+          <div class="pipeline-bar-wrap">
+            <div class="pipeline-bar-label">
+              <span>${escHtml(label)}</span>
+              <span style="font-weight:700">${val.count} — ${fmtMRR(val.value)}</span>
+            </div>
+            <div class="pipeline-bar-track">
+              <div class="pipeline-bar-fill" style="width:${pbsTotal ? Math.round(val.value/pbsTotal*100) : 0}%"></div>
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Quick Stats</div>
+      ${[
+        ['Total Leads', k.total_leads],
+        ['Active Opportunities', k.active_opportunities],
+        ['Won Opportunities', k.won_count],
+        ['Lost Opportunities', k.lost_count],
+        ['Pipeline MRR', fmtMRR(k.pipeline_mrr)],
+        ['Won MRR', fmtMRR(k.won_mrr)],
+        ['Win Rate', k.win_rate + '%'],
+        ['Avg Deal (won)', fmtMRR(k.avg_deal_size)],
+      ].map(([l, v]) => `<div class="stat-row"><span class="stat-label">${l}</span><span class="stat-val">${v}</span></div>`).join('')}
+    </div>
+  </div>`;
+}
+
+function renderOverviewCharts(data) {
+  const pbs = data.pipeline_by_status || {};
+  const mrr = data.mrr_by_month || {};
+  const a2p = data.a2p_breakdown || {};
+
+  // Donut
+  const pbsEntries = Object.entries(pbs).sort((a, b) => b[1].value - a[1].value);
+  const donutCanvas = document.getElementById('donut-stage');
+  if (donutCanvas) {
+    drawDonut(donutCanvas, pbsEntries.map(([,v]) => v.count), pbsEntries.map(([k]) => k));
+    const legendEl = document.getElementById('stage-legend');
+    const colors = ['#5B3FDE','#00C896','#FF6B35','#F5A623','#E53935','#1565c0','#6a1b9a'];
+    if (legendEl) {
+      legendEl.innerHTML = pbsEntries.slice(0, 7).map(([label, val], i) =>
+        `<div class="legend-item"><div class="legend-dot" style="background:${colors[i % colors.length]}"></div><span>${escHtml(label)}: <strong>${val.count}</strong></span></div>`
+      ).join('');
+    }
+  }
+
+  // Bar MRR
+  const mrrMonths = Object.keys(mrr).sort().slice(-12);
+  const mrrVals = mrrMonths.map(m => mrr[m]);
+  const barMRR = document.getElementById('bar-mrr');
+  if (barMRR) drawBar(barMRR, mrrMonths.map(m => m.substring(5)), mrrVals, '#00C896');
+
+  // Bar A2P
+  const a2pCanvas = document.getElementById('bar-a2p');
+  const a2pLabels = ['None','Quiz','Reg.','Campaign','Complete'];
+  const a2pVals = [a2p[0]||0, a2p[2]||0, a2p[3]||0, a2p[4]||0, a2p[5]||0];
+  if (a2pCanvas) drawBar(a2pCanvas, a2pLabels, a2pVals, '#5B3FDE');
+}
+
+function buildA2PSection(data) {
+  const opps = data.active_opportunities || [];
+  const a2p = data.a2p_breakdown || {};
+
+  const stages = [
+    [0, 'Not Started', a2p[0] || 0],
+    [1, 'Not Started (marked)', a2p[1] || 0],
+    [2, 'Quiz Submitted', a2p[2] || 0],
+    [3, 'Registration Submitted', a2p[3] || 0],
+    [4, 'Campaign Submitted', a2p[4] || 0],
+    [5, 'Complete', a2p[5] || 0],
+  ];
+  const total = stages.reduce((s, [,, c]) => s + c, 0);
+
+  const stageColors = ['#E53935','#FF6B35','#F5A623','#1565c0','#6a1b9a','#00C896'];
+
+  const notComplete = opps.filter(o => (o.a2p_stage || 0) < 5);
+  const hasAlert = notComplete.length > 0;
+  const alertDot = document.getElementById('a2p-alert');
+  if (alertDot) alertDot.style.display = hasAlert ? 'inline-block' : 'none';
+
+  return `
+  <div class="kpi-grid" style="margin-bottom:20px">
+    ${stages.map(([stage, label, count]) => `
+    <div class="kpi" style="border-top-color:${stageColors[stage]}">
+      <div class="kpi-label">${label}</div>
+      <div class="kpi-value" style="color:${stageColors[stage]}">${count}</div>
+      <div class="kpi-sub">${total ? Math.round(count/total*100) : 0}% of active</div>
+    </div>`).join('')}
+  </div>
+
+  <div class="deals-header">
+    <div class="deals-title">Active Deals A2P Status</div>
+    <input class="search-box" type="text" placeholder="Search…" oninput="filterTable('a2p-tbl', this.value)">
+  </div>
+  <div class="table-wrap">
+    <div class="table-scroll">
+      <table id="tbl-a2p-tbl">
+        <thead>
+          <tr>
+            <th>Company</th>
+            <th>MRR</th>
+            <th>A2P Stage</th>
+            <th>A2P Detail</th>
+            <th>Pipeline Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${opps.map(o => `
+          <tr class="deal-row" data-name="${(o.lead_display_name||'').toLowerCase()}">
+            <td><div class="lead-name">${escHtml(o.lead_display_name||'—')}</div></td>
+            <td><span class="deal-value">${o.monthly_value ? fmtMRR(o.monthly_value) : '—'}</span></td>
+            <td>${a2pDots(o.a2p_stage||0)}</td>
+            <td style="font-size:0.75rem;color:var(--text-muted);max-width:180px">${escHtml(o.a2p_status||'—')}</td>
+            <td><div class="pr-note${o.pipeline_review?' has-note':''}">${escHtml((o.pipeline_review||'').substring(0,60)||'—')}</div></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+async function loadDashboard() {
+  const app = document.getElementById('app');
+  app.innerHTML = '<div class="loading" id="loading-state"><div class="spinner"></div><div>Loading dashboard data…</div></div>';
+
+  try {
+    const res = await fetch('/api/dashboard');
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(JSON.stringify(err, null, 2));
+    }
+    DATA = await res.json();
+
+    const k = DATA.kpis;
+    document.getElementById('tab-badge-pipeline').textContent = k.active_opportunities;
+    document.getElementById('tab-badge-won').textContent = k.won_count;
+    document.getElementById('tab-badge-lost').textContent = k.lost_count;
+    document.getElementById('last-updated').textContent = 'Updated ' + new Date().toLocaleTimeString();
+
+    app.innerHTML = `
+      <div class="section active" id="sec-overview">${buildOverview(DATA)}</div>
+      <div class="section" id="sec-pipeline"><div id="pipeline-table"></div></div>
+      <div class="section" id="sec-won"><div id="won-table"></div></div>
+      <div class="section" id="sec-lost"><div id="lost-table"></div></div>
+      <div class="section" id="sec-a2p"><div id="a2p-section"></div></div>
+    `;
+
+    // Build tables
+    buildOppTable(DATA.active_opportunities, 'pipeline-table', true);
+    buildOppTable(DATA.won_opportunities, 'won-table', false);
+    buildOppTable(DATA.lost_opportunities, 'lost-table', false);
+    document.getElementById('a2p-section').innerHTML = buildA2PSection(DATA);
+
+    // Charts need DOM to be ready
+    requestAnimationFrame(() => renderOverviewCharts(DATA));
+
+  } catch (e) {
+    app.innerHTML = `<div class="error-msg">
+      <strong>Failed to load dashboard</strong>
+      <p>Make sure your <code>.env</code> file has a valid <code>CLOSE_API_KEY</code> and the server can reach the Close.io API.</p>
+      <pre>${escHtml(e.message)}</pre>
+    </div>`;
+  }
+}
+
+loadDashboard();
+</script>
+</body>
+</html>
