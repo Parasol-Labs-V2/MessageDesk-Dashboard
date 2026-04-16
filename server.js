@@ -18,7 +18,6 @@ const closeApi = axios.create({
   timeout: 30000,
 });
 
-// Fetch all pages from a Close.io endpoint
 async function fetchAllPages(endpoint, params = {}) {
   const results = [];
   let skip = 0;
@@ -33,47 +32,27 @@ async function fetchAllPages(endpoint, params = {}) {
   return results;
 }
 
-// Convert opportunity value to monthly equivalent
 function toMonthly(opp) {
   const val = parseFloat(opp.value) || 0;
   const freq = (opp.value_period || '').toLowerCase();
   if (freq === 'annual') return val / 12;
   if (freq === 'one_time' || freq === 'one-time') return 0;
-  return val; // monthly
+  return val;
 }
 
-const PARASOL_STATUSES = new Set([
-  'Parasol: Champion Confirmed',
-  'Parasol: Active Evaluation',
-  'Parasol: Meeting Scheduled',
-  'Parasol: Closed Won',
-  'Parasol: Closed Lost - No Showed',
-  'Parasol: Closed Lost - No Decision',
-  'Parasol: Closed Lost - Timing',
-  'Parasol: Closed Lost - Mass Texting',
-  'Parasol: Registration Pending',
-  'Parasol: Typeform Reg App Submitted',
-  'Parasol: Website Changes Needed',
-  'Parasol: Account Created',
-  'Parasol: Registration Approved',
-]);
-
-function isParasolStatus(label) {
-  return label.startsWith('Parasol:');
-}
-
-// Parse A2P status number prefix
 function a2pStage(raw) {
   if (!raw) return 0;
   const m = raw.match(/^(\d+)\./);
   return m ? parseInt(m[1]) : 0;
 }
 
-// GET /api/debug - inspect raw lead fields
+// GET /api/debug - inspect raw lead + opportunity fields
 app.get('/api/debug', async (req, res) => {
   try {
-    const r = await closeApi.get('/lead/', { params: { _limit: 1 } });
-    res.json(r.data.data[0] || {});
+    const r = await closeApi.get('/lead/', {
+      params: { _limit: 3, _fields: 'id,display_name,opportunities' },
+    });
+    res.json(r.data.data || []);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -82,110 +61,83 @@ app.get('/api/debug', async (req, res) => {
 // GET /api/dashboard - main data endpoint
 app.get('/api/dashboard', async (req, res) => {
   try {
-    // Fetch all leads with opportunities
+    // ── Step 1: fetch ALL leads that have at least one opportunity ──
     const allLeads = await fetchAllPages('/lead/', {
       query: 'has:opportunities',
       _fields: 'id,display_name,opportunities,custom,contacts,date_created',
     });
 
-    // Log first 10 leads so we can see the raw status field names
-    console.log('\n=== FIRST 10 LEADS (raw status fields) ===');
-    allLeads.slice(0, 10).forEach((lead, i) => {
-      const opp0 = lead.opportunities?.[0];
-      console.log(`[${i}] ${lead.display_name}`);
-      console.log(`     status_label        : ${opp0?.status_label}`);
-      console.log(`     status_type         : ${opp0?.status_type}`);
-      console.log(`     opp keys            : ${opp0 ? Object.keys(opp0).join(', ') : 'no opp'}`);
-    });
+    console.log('TOTAL BEFORE FILTER:', allLeads.length);
+    console.log('SAMPLE LEAD STATUS:', JSON.stringify(allLeads[0], null, 2));
 
-    // Hard filter: keep ONLY leads whose first opportunity has a Parasol: status
-    const leads = allLeads.filter(lead => {
-      const status =
-        lead.opportunities?.[0]?.status_label ||
-        '';
+    // ── Step 2: keep ONLY Parasol: leads ──
+    const parasolLeads = allLeads.filter(lead => {
+      const opps = lead.opportunities || [];
+      if (opps.length === 0) return false;
+      const status = opps[0].status_label || '';
       return status.startsWith('Parasol:');
     });
 
-    console.log(`\nLeads before filter : ${allLeads.length}`);
-    console.log(`Leads after filter  : ${leads.length} (expected ~360-370)\n`);
+    console.log('TOTAL AFTER PARASOL FILTER:', parasolLeads.length);
 
-    // Fetch all opportunities directly for richer data
+    // ── Step 3: fetch ALL opportunities, then hard-filter to Parasol ──
+    const parasolLeadIdSet = new Set(parasolLeads.map(l => l.id));
+
     const allOpps = await fetchAllPages('/opportunity/', {
       _fields: 'id,lead_id,lead_name,status_id,status_label,status_type,value,value_period,date_created,date_updated,date_won,date_lost,user_id,user_name,note,confidence,custom',
     });
 
-    // Log sample opp fields on first call to verify status_label field name
-    if (allOpps.length > 0) {
-      console.log('=== SAMPLE OPP FIELDS ===');
-      console.log(JSON.stringify(allOpps[0], null, 2).slice(0, 600));
-    }
+    console.log('TOTAL OPPS BEFORE FILTER:', allOpps.length);
 
-    // Fetch opportunity statuses
+    const parasolOpps = allOpps.filter(o => {
+      const label = o.status_label || '';
+      return label.startsWith('Parasol:') && parasolLeadIdSet.has(o.lead_id);
+    });
+
+    console.log('TOTAL OPPS AFTER FILTER:', parasolOpps.length);
+
+    // ── Step 4: fetch statuses ──
     const statusRes = await closeApi.get('/status/opportunity/');
     const statuses = statusRes.data.data || [];
 
-    // Build a set of Parasol lead IDs for fast lookup, then filter opps
-    const parasolLeadIdSet = new Set(leads.map(l => l.id));
-    const opps = allOpps.filter(o => isParasolStatus(o.status_label || '') && parasolLeadIdSet.has(o.lead_id));
+    const statusTypeMap = {};
+    for (const s of statuses) {
+      statusTypeMap[s.id] = s.type;
+    }
 
-    console.log(`Opps before filter  : ${allOpps.length}`);
-    console.log(`Opps after filter   : ${opps.length}\n`);
-
-    // Build lookup maps
+    // ── Step 5: build lead map from parasolLeads only ──
     const leadMap = {};
-    for (const lead of leads) {
+    for (const lead of parasolLeads) {
       leadMap[lead.id] = lead;
     }
 
-    // Extract custom field IDs from first lead with custom fields
+    // Detect custom field IDs from parasolLeads
     let a2pFieldId = null;
     let pipelineFieldId = null;
-    for (const lead of leads) {
-      if (lead.custom) {
-        for (const [k, v] of Object.entries(lead.custom)) {
-          if (typeof v === 'string' && v.match(/^\d+\.\s+/)) {
-            if (!a2pFieldId) a2pFieldId = k;
-          }
+    for (const lead of parasolLeads) {
+      const custom = lead.custom || {};
+      for (const [k, v] of Object.entries(custom)) {
+        if (!a2pFieldId && typeof v === 'string' && v.match(/^\d+\.\s+/)) {
+          a2pFieldId = k;
         }
       }
+      if (a2pFieldId) break;
     }
 
-    // Process opportunities
+    // ── Step 6: process parasolOpps only ──
     const activeOpps = [];
     const wonOpps = [];
     const lostOpps = [];
     let totalPipelineValue = 0;
     let totalWonMRR = 0;
 
-    // Status type mapping
-    const statusTypeMap = {};
-    for (const s of statuses) {
-      statusTypeMap[s.id] = s.type; // 'active', 'won', 'lost'
-    }
-
-    const parasolLeadIds = new Set();
-
-    for (const opp of opps) {
-
+    for (const opp of parasolOpps) {
       const monthly = toMonthly(opp);
       const lead = leadMap[opp.lead_id] || {};
       const custom = lead.custom || {};
-      parasolLeadIds.add(opp.lead_id);
 
-      // Find A2P field
-      let a2pStatus = '';
+      const a2pStatus = a2pFieldId ? (custom[a2pFieldId] || '') : '';
       let pipelineReview = '';
-      if (!a2pFieldId) {
-        for (const [k, v] of Object.entries(custom)) {
-          if (typeof v === 'string' && v.match(/^\d+\.\s+/)) {
-            a2pFieldId = k;
-            a2pStatus = v;
-            break;
-          }
-        }
-      } else {
-        a2pStatus = custom[a2pFieldId] || '';
-      }
       if (!pipelineFieldId) {
         for (const [k, v] of Object.entries(custom)) {
           if (k !== a2pFieldId && typeof v === 'string' && v.length > 20) {
@@ -198,7 +150,6 @@ app.get('/api/dashboard', async (req, res) => {
         pipelineReview = custom[pipelineFieldId] || '';
       }
 
-      // Age in days
       const created = new Date(opp.date_created);
       const ageDays = Math.floor((Date.now() - created.getTime()) / 86400000);
 
@@ -224,30 +175,22 @@ app.get('/api/dashboard', async (req, res) => {
       }
     }
 
-    // Sort active by monthly value desc
     activeOpps.sort((a, b) => b.monthly_value - a.monthly_value);
 
-    // KPI calculations — leads array is already Parasol-filtered
-    const totalLeads = leads.length;
+    const totalLeads = parasolLeads.length;
     const activeCount = activeOpps.length;
     const wonCount = wonOpps.length;
     const lostCount = lostOpps.length;
-
-    // Win rate
     const closedTotal = wonCount + lostCount;
     const winRate = closedTotal > 0 ? Math.round((wonCount / closedTotal) * 100) : 0;
-
-    // Average deal size (won)
     const avgDealSize = wonCount > 0 ? Math.round(totalWonMRR / wonCount) : 0;
 
-    // A2P breakdown for active
     const a2pBreakdown = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
     for (const o of activeOpps) {
       const stage = o.a2p_stage;
       a2pBreakdown[stage] = (a2pBreakdown[stage] || 0) + 1;
     }
 
-    // Pipeline by status label
     const pipelineByStatus = {};
     for (const o of activeOpps) {
       const label = o.status_label || 'Unknown';
@@ -256,7 +199,6 @@ app.get('/api/dashboard', async (req, res) => {
       pipelineByStatus[label].value += o.monthly_value;
     }
 
-    // Won MRR over time (by month)
     const mrrByMonth = {};
     for (const o of wonOpps) {
       const d = new Date(o.date_won || o.date_updated);
