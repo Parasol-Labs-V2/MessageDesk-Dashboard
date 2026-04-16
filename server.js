@@ -68,7 +68,28 @@ app.get('/api/dashboard', async (req, res) => {
     });
 
     console.log('TOTAL BEFORE FILTER:', allLeads.length);
-    console.log('SAMPLE LEAD STATUS:', JSON.stringify(allLeads[0], null, 2));
+
+    // Dump the raw opportunity objects from the first 5 leads
+    console.log('\n=== RAW OPP FIELDS FROM FIRST 5 LEADS ===');
+    allLeads.slice(0, 5).forEach((lead, i) => {
+      const opp = (lead.opportunities || [])[0];
+      console.log(`\n[Lead ${i}] ${lead.display_name}`);
+      if (!opp) {
+        console.log('  NO OPPORTUNITIES');
+      } else {
+        console.log('  ALL KEYS IN OPP:', Object.keys(opp).join(', '));
+        console.log('  status_label    :', JSON.stringify(opp.status_label));
+        console.log('  status_type     :', JSON.stringify(opp.status_type));
+        console.log('  status_id       :', JSON.stringify(opp.status_id));
+        // print every key whose name contains "status"
+        Object.entries(opp).forEach(([k, v]) => {
+          if (k.toLowerCase().includes('status')) {
+            console.log(`  ${k}: ${JSON.stringify(v)}`);
+          }
+        });
+      }
+    });
+    console.log('\n=== END RAW DUMP ===\n');
 
     // ── Step 2: keep ONLY Parasol: leads ──
     const parasolLeads = allLeads.filter(lead => {
