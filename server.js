@@ -112,40 +112,21 @@ function toMonthly(opp) {
 const PR_EMOJI_RE  = /^[🟡🔴🟢✅⚠️🔵⚪]/u;
 const PR_KEYWORD_RE = /awaiting|blocked by|next step|follow.?up|pending|waiting/i;
 
-let _fields = { a2p: null, pr: null, demo: null, scanned: false };
+let _fields = { a2p: null, pr: null, scanned: false };
 
 function detectFields(leads) {
   if (_fields.scanned) return;
 
-  // ── Dump ALL custom fields from first 5 Parasol leads for debugging ──────────
-  console.log('\n════ CUSTOM FIELD DUMP (first 5 Parasol leads) ════');
-  leads.slice(0, 5).forEach((lead, i) => {
-    console.log(`\n[${i}] ${lead.display_name}`);
-    const c = lead.custom || {};
-    if (Object.keys(c).length === 0) { console.log('  (no custom fields)'); return; }
-    Object.entries(c).forEach(([k, v]) => {
-      const preview = typeof v === 'string' ? v.slice(0, 80) : JSON.stringify(v);
-      console.log(`  ${k}: ${preview}`);
-    });
-  });
-  console.log('\n════ END CUSTOM FIELD DUMP ════\n');
-
   // ── A2P: value looks like "1. Not Started" / "5. Complete (...)" ─────────────
   for (const lead of leads) {
+    if (_fields.a2p) break;
     const c = lead.custom || {};
     for (const [k, v] of Object.entries(c)) {
-      if (!_fields.a2p && typeof v === 'string' && /^\d+\.\s+/.test(v)) {
-        _fields.a2p = k;
-      }
-      if (!_fields.demo && typeof v === 'boolean') {
-        _fields.demo = k;
-      }
+      if (!_fields.a2p && typeof v === 'string' && /^\d+\.\s+/.test(v)) { _fields.a2p = k; break; }
     }
-    if (_fields.a2p && _fields.demo) break;
   }
 
-  // ── Pipeline Review: prefer emoji-prefixed values or keyword match ────────────
-  // Pass 1: look for emoji-prefixed values (🟡 🔴 ✅) — most reliable signal
+  // ── Pipeline Review: emoji-prefixed → keyword in value → keyword in key name ──
   for (const lead of leads) {
     if (_fields.pr) break;
     const c = lead.custom || {};
@@ -154,7 +135,6 @@ function detectFields(leads) {
       if (typeof v === 'string' && PR_EMOJI_RE.test(v)) { _fields.pr = k; break; }
     }
   }
-  // Pass 2: keyword match in value text
   if (!_fields.pr) {
     for (const lead of leads) {
       if (_fields.pr) break;
@@ -165,7 +145,6 @@ function detectFields(leads) {
       }
     }
   }
-  // Pass 3: keyword in field key name
   if (!_fields.pr) {
     const known = leads[0] ? Object.keys(leads[0].custom || {}) : [];
     for (const k of known) {
@@ -174,20 +153,7 @@ function detectFields(leads) {
   }
 
   _fields.scanned = true;
-  console.log('Custom fields resolved →', _fields);
-
-  // Log demo field candidates if still null
-  if (!_fields.demo) {
-    console.log('⚠ demo field not found — logging boolean/checkbox-like fields:');
-    leads.slice(0, 10).forEach(lead => {
-      const c = lead.custom || {};
-      Object.entries(c).forEach(([k, v]) => {
-        if (typeof v === 'boolean' || v === 'Yes' || v === 'No') {
-          console.log(`  ${lead.display_name} | ${k}: ${v}`);
-        }
-      });
-    });
-  }
+  console.log('Lead custom fields resolved → a2p:', _fields.a2p, '| pr:', _fields.pr);
 }
 
 const getA2P = l => (_fields.a2p ? (l.custom||{})[_fields.a2p] || '' : '');
