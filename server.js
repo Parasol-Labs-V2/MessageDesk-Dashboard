@@ -306,6 +306,30 @@ async function fetchPage(skip) {
   return res.json();
 }
 
+// Fetch opportunity custom fields directly — lead endpoint omits them
+async function fetchOppCustomFields() {
+  const base = `https://api.close.com/api/v1/opportunity/?pipeline_id=${PARASOL_PIPELINE_ID}&_limit=100&_fields=id,custom`;
+  let all = [], skip = 0, total = null;
+  while (true) {
+    const res = await fetch(`${base}&_skip=${skip}`, { headers: authHeaders() });
+    if (!res.ok) throw new Error(`Opp custom fetch ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    const data = await res.json();
+    if (total === null) total = data.total_results || 0;
+    const rows = data.data || [];
+    all = all.concat(rows);
+    process.stdout.write(`\rFetching opp custom fields: ${all.length}/${total}   `);
+    if (rows.length < 100 || all.length >= total) break;
+    skip += 100;
+  }
+  console.log(`\nFetched opp custom fields for ${all.length} Parasol opps`);
+  // Dump first opp to terminal so we can see field IDs
+  if (all.length > 0) {
+    console.log('\nFULL OPP OBJECT (from /opportunity/ endpoint):');
+    console.log(JSON.stringify(all[0], null, 2));
+  }
+  return Object.fromEntries(all.map(o => [o.id, o.custom || {}]));
+}
+
 async function fetchAllLeads() {
   fetchStatus.fetched = 0;
   fetchStatus.total   = 0;
@@ -341,7 +365,7 @@ async function fetchAllLeads() {
 }
 
 // ─── Process + build dashboard ─────────────────────────────────────────────────
-function processLeads(allLeads) {
+function processLeads(allLeads, oppCustomMap = {}) {
   // Hard filter to Parasol pipeline only
   const leads = allLeads.filter(lead =>
     lead.opportunities &&
@@ -367,15 +391,19 @@ function processLeads(allLeads) {
 
   detectFields(leads);
 
-  // Collect all Parasol opps for opp-field detection
+  // Merge fetched opp custom fields into each opp, then detect field IDs
   const allParasolOpps = leads.flatMap(l =>
-    (l.opportunities||[]).filter(o => o.pipeline_id === PARASOL_PIPELINE_ID)
+    (l.opportunities||[])
+      .filter(o => o.pipeline_id === PARASOL_PIPELINE_ID)
+      .map(o => ({ ...o, custom: { ...(o.custom || {}), ...(oppCustomMap[o.id] || {}) } }))
   );
   detectOppFields(allParasolOpps);
 
   const deals = [];
   for (const lead of leads) {
-    const opps = (lead.opportunities||[]).filter(o => o.pipeline_id === PARASOL_PIPELINE_ID);
+    const opps = (lead.opportunities||[])
+      .filter(o => o.pipeline_id === PARASOL_PIPELINE_ID)
+      .map(o => ({ ...o, custom: { ...(o.custom || {}), ...(oppCustomMap[o.id] || {}) } }));
     for (const opp of opps) {
       const stage       = STAGE_MAP[opp.status_label] || opp.status_label || 'Unknown';
       const category    = getCategory(stage);
@@ -494,9 +522,10 @@ async function fetchAndCache() {
   fetchStatus.error      = null;
 
   try {
-    const allLeads = await fetchAllLeads();
-    const deals    = processLeads(allLeads);
-    const snapshot = loadLatestSnapshot();
+    const allLeads     = await fetchAllLeads();
+    const oppCustomMap = await fetchOppCustomFields();
+    const deals        = processLeads(allLeads, oppCustomMap);
+    const snapshot     = loadLatestSnapshot();
     const data     = buildDashboard(deals, snapshot);
     saveSnapshot(data);
     writeFileCache(data);
@@ -587,6 +616,26 @@ app.get('/api/dashboard', async (req, res) => {
   // 4. Start a fresh fetch, tell client to poll
   fetchAndCache();
   return res.status(202).json({ status: 'fetching', fetched: 0, total: 0, pct: 0 });
+});
+
+// Debug: fetch a single opportunity directly to inspect all its fields
+app.get('/api/debug/opp/:id', async (req, res) => {
+  try {
+    const r = await fetch(`https://api.close.com/api/v1/opportunity/${req.params.id}/`, { headers: authHeaders() });
+    if (!r.ok) return res.status(r.status).json({ error: await r.text() });
+    res.json(await r.json());
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Debug: fetch first cached opp ID then retrieve full opportunity record
+app.get('/api/debug/opp', async (req, res) => {
+  const firstDeal = _cache && _cache.deals && _cache.deals[0];
+  if (!firstDeal) return res.status(404).json({ error: 'No cached deals yet — wait for fetch to complete' });
+  try {
+    const r = await fetch(`https://api.close.com/api/v1/opportunity/${firstDeal.id}/`, { headers: authHeaders() });
+    if (!r.ok) return res.status(r.status).json({ error: await r.text() });
+    res.json(await r.json());
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/meetings', (req, res) => {
