@@ -239,11 +239,10 @@ async function fetchOppCustomFields() {
     const res = await fetch(`${base}&_skip=${skip}`, { headers: authHeaders() });
     if (!res.ok) throw new Error(`Opp custom fetch ${res.status}: ${(await res.text()).slice(0, 200)}`);
     const data = await res.json();
-    if (total === null) total = data.total_results || 0;
     const rows = data.data || [];
     all = all.concat(rows);
-    process.stdout.write(`\rFetching opp custom fields: ${all.length}/${total}   `);
-    if (rows.length < 100 || all.length >= total) break;
+    process.stdout.write(`\rFetching opp custom fields: ${all.length}…   `);
+    if (rows.length < 100) break;
     skip += 100;
   }
   console.log(`\nFetched opp custom fields for ${all.length} Parasol opps`);
