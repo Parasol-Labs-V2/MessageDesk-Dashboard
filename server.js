@@ -2,23 +2,14 @@ require('dotenv').config();
 const express = require('express');
 const fetch   = require('node-fetch');
 const path    = require('path');
-const fs      = require('fs');
 
 const app      = express();
 const PORT     = process.env.PORT || 3000;
 const API_KEY  = process.env.CLOSE_API_KEY || '';
 const PARASOL_PIPELINE_ID = 'pipe_1lXFBvtVQXtRgcjonTFr1Y';
 
-const CACHE_DIR  = path.join(__dirname, 'cache');
-const CACHE_FILE = path.join(CACHE_DIR, 'data.json');
-const SNAPSHOTS_DIR = path.join(__dirname, 'snapshots');
-const FILE_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
-
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
-for (const dir of [CACHE_DIR, SNAPSHOTS_DIR]) {
-  try { if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true }); } catch {}
-}
 
 // ─── In-memory state ───────────────────────────────────────────────────────────
 let _cache = null;
@@ -31,30 +22,6 @@ const fetchStatus = {
   error:      null,
   started_at: null,
 };
-
-// ─── File-cache helpers ────────────────────────────────────────────────────────
-function readFileCache() {
-  try {
-    if (!fs.existsSync(CACHE_FILE)) return null;
-    const raw = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
-    const age = Date.now() - new Date(raw.saved_at).getTime();
-    if (age > FILE_CACHE_TTL) return null;
-    return raw;
-  } catch { return null; }
-}
-
-function writeFileCache(data) {
-  try {
-    fs.writeFileSync(CACHE_FILE, JSON.stringify({ saved_at: new Date().toISOString(), data }));
-    console.log('File cache written:', CACHE_FILE);
-  } catch (e) {
-    console.log('File cache skipped (read-only fs):', e.code);
-  }
-}
-
-function deleteFileCache() {
-  try { fs.unlinkSync(CACHE_FILE); } catch {}
-}
 
 // ─── Auth ──────────────────────────────────────────────────────────────────────
 function authHeaders() {
@@ -337,7 +304,8 @@ function processLeads(allLeads, oppCustomMap = {}) {
   return deals;
 }
 
-function buildDashboard(deals, snapshot) {
+function buildDashboard(deals) {
+  const snapshot = null; // no persistent storage on Vercel — WoW deltas unavailable
   const active     = deals.filter(d => d.category === 'active');
   const onboarding = deals.filter(d => d.category === 'onboarding');
   const won        = deals.filter(d => d.category === 'won');
@@ -396,32 +364,6 @@ function buildDashboard(deals, snapshot) {
   };
 }
 
-// ─── Snapshot helpers ──────────────────────────────────────────────────────────
-function saveSnapshot(data) {
-  try {
-    const today = new Date().toISOString().split('T')[0];
-    const file  = path.join(SNAPSHOTS_DIR, `${today}.json`);
-    if (fs.existsSync(file)) return;
-    fs.writeFileSync(file, JSON.stringify({
-      date: today, kpis: data.kpis,
-      deals: data.deals.map(d => ({ id:d.id, company:d.company, stage:d.stage, category:d.category, monthly_value:d.monthly_value })),
-    }, null, 2));
-    console.log('Snapshot saved:', today);
-  } catch (e) {
-    console.log('Snapshot skipped (read-only fs):', e.code);
-  }
-}
-
-function loadLatestSnapshot() {
-  const today = new Date().toISOString().split('T')[0];
-  try {
-    const files = fs.readdirSync(SNAPSHOTS_DIR)
-      .filter(f => f.endsWith('.json') && f < `${today}.json`)
-      .sort().reverse();
-    return files.length ? JSON.parse(fs.readFileSync(path.join(SNAPSHOTS_DIR, files[0]), 'utf8')) : null;
-  } catch { return null; }
-}
-
 // ─── Main fetch-and-cache pipeline ────────────────────────────────────────────
 async function fetchAndCache() {
   if (fetchStatus.status === 'fetching') {
@@ -436,10 +378,7 @@ async function fetchAndCache() {
     const allLeads     = await fetchAllLeads();
     const oppCustomMap = await fetchOppCustomFields();
     const deals        = processLeads(allLeads, oppCustomMap);
-    const snapshot     = loadLatestSnapshot();
-    const data     = buildDashboard(deals, snapshot);
-    saveSnapshot(data);
-    writeFileCache(data);
+    const data         = buildDashboard(deals);
     _cache = data;
     fetchStatus.status = 'ready';
     console.log('Background fetch complete — data ready');
@@ -492,29 +431,14 @@ app.get('/api/status', (req, res) => {
 app.get('/api/dashboard', async (req, res) => {
   const force = req.query.refresh === '1';
 
-  if (force) {
-    _cache = null;
-    deleteFileCache();
-  }
+  if (force) _cache = null;
 
-  // 1. Serve from in-memory cache (fastest path)
+  // Serve from in-memory cache
   if (!force && _cache) {
-    return res.json({ ..._cache, cached: true, cache_source: 'memory' });
+    return res.json({ ..._cache, cached: true });
   }
 
-  // 2. Serve from file cache
-  if (!force) {
-    const fc = readFileCache();
-    if (fc) {
-      _cache = fc.data;
-      fetchStatus.status = 'ready';
-      const age = Math.round((Date.now() - new Date(fc.saved_at).getTime()) / 60000);
-      console.log(`Serving file cache (${age} min old)`);
-      return res.json({ ...fc.data, cached: true, cache_source: 'file', cache_age_minutes: age });
-    }
-  }
-
-  // 3. Fetch in progress — tell client to poll
+  // Fetch in progress — tell client to poll
   if (fetchStatus.status === 'fetching') {
     return res.status(202).json({
       status:  'fetching',
@@ -524,7 +448,7 @@ app.get('/api/dashboard', async (req, res) => {
     });
   }
 
-  // 4. Start a fresh fetch, tell client to poll
+  // Start a fresh fetch, tell client to poll
   fetchAndCache();
   return res.status(202).json({ status: 'fetching', fetched: 0, total: 0, pct: 0 });
 });
@@ -559,16 +483,7 @@ app.get('/api/meetings', (req, res) => {
 if (require.main === module) {
   app.listen(PORT, () => {
     console.log(`MessageDesk Dashboard → http://localhost:${PORT}`);
-    const fc = readFileCache();
-    if (fc) {
-      _cache = fc.data;
-      fetchStatus.status = 'ready';
-      const age = Math.round((Date.now() - new Date(fc.saved_at).getTime()) / 60000);
-      console.log(`File cache loaded (${age} min old) — serving immediately`);
-    } else {
-      console.log('No fresh file cache — starting background fetch…');
-      fetchAndCache();
-    }
+    fetchAndCache();
   });
 }
 
