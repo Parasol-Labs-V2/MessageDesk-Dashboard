@@ -11,9 +11,11 @@ const PARASOL_PIPELINE_ID = 'pipe_1lXFBvtVQXtRgcjonTFr1Y';
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ─── In-memory cache + concurrency lock ───────────────────────────────────────
-let _cache        = null;
-let _fetchPromise = null; // prevents duplicate concurrent fetches
+// ─── In-memory caches ──────────────────────────────────────────────────────────
+let _cache       = null;
+let _fetchPromise = null;
+let _leadCache   = null;   // { leadMap, fieldIds } — shared by meetings + PR
+let _leadPromise = null;
 
 // ─── Auth ──────────────────────────────────────────────────────────────────────
 function authHeaders() {
@@ -68,44 +70,22 @@ function toMonthly(opp) {
   return 0;
 }
 
-// ─── Opp custom fields (hardcoded after discovery) ─────────────────────────────
-const DEMO_STATUS_KEY = 'cf_8BtzV3ggENtaiUj0nBV1NZ65v9g9IaN2XglzDk4rHEA';
-const DEMO_DATE_KEY   = 'cf_nRCz1lxTf78cLTtm8QCi2RwWyEdYY6r96JDzwMnMRYa';
-
-// Close.io returns opp custom fields as top-level "custom.cf_xxx" keys
-function extractOppCustom(opp) {
-  const c = { ...(opp.custom || {}) };
-  for (const [k, v] of Object.entries(opp)) {
-    if (k.startsWith('custom.')) c[k.slice('custom.'.length)] = v;
-  }
-  return c;
-}
-
-function getDemoStatus(custom) { return custom[DEMO_STATUS_KEY] || ''; }
-function getDemoDate(custom) {
-  const v = custom[DEMO_DATE_KEY];
-  if (!v) return null;
-  const d = new Date(v);
-  return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0];
-}
-
-function scoreOpp(opp, demoCompleted) {
+function scoreOpp(opp) {
   let s = 50;
   const stage = STAGE_MAP[opp.status_label] || '';
   if (stage === 'Champion Confirmed')     s += 20;
   else if (stage === 'Active Evaluation') s += 10;
-  if (demoCompleted) s += 15;
   const m = toMonthly(opp);
   if (m >= 200) s += 10; else if (m >= 100) s += 5;
   return Math.min(s, 99);
 }
 
-// ─── Fetch all Parasol pipeline opportunities (fast — ~5s for ~500 opps) ──────
+// ─── Fetch all Parasol pipeline opportunities ──────────────────────────────────
 async function fetchAllParasolOpps() {
   const fields = [
     'id','lead_id','lead_name','status_label',
     'value','value_period','value_formatted',
-    'date_created','date_updated','custom',
+    'date_created','date_updated',
   ].join(',');
   const base = `https://api.close.com/api/v1/opportunity/?pipeline_id=${PARASOL_PIPELINE_ID}&_limit=100&_fields=${fields}`;
 
@@ -124,42 +104,31 @@ async function fetchAllParasolOpps() {
   return all;
 }
 
-// ─── Process opps into deals ───────────────────────────────────────────────────
+// ─── Process opps into basic deals (no lead-level enrichment yet) ─────────────
 function processOpps(opps) {
   const deals = [];
   for (const opp of opps) {
-    const custom       = extractOppCustom(opp);
-    const stage        = STAGE_MAP[opp.status_label] || opp.status_label || 'Unknown';
-    const category     = getCategory(stage);
-    const monthly      = toMonthly(opp);
-    const ageDays      = ACTIVE_STAGES.has(stage)
+    const stage    = STAGE_MAP[opp.status_label] || opp.status_label || 'Unknown';
+    const category = getCategory(stage);
+    const monthly  = toMonthly(opp);
+    const ageDays  = ACTIVE_STAGES.has(stage)
       ? Math.floor((Date.now() - new Date(opp.date_created).getTime()) / 86400000) : null;
-    const demoStatus   = getDemoStatus(custom);
-    const demoDate     = getDemoDate(custom);
-    const demoCompleted = demoStatus === 'Completed';
 
     deals.push({
       id: opp.id, lead_id: opp.lead_id,
       company:        opp.lead_name || '',
       stage, category, monthly_value: monthly, age_days: ageDays,
-      score:          scoreOpp(opp, demoCompleted),
+      score:          scoreOpp(opp),
+      // Lead-level fields — filled in after lead fetch
       a2p_status:     '',
       pipeline_review:'',
-      demo_completed: demoCompleted,
-      demo_status:    demoStatus,
-      demo_date:      demoDate,
+      demo_completed: false,
+      demo_status:    '',
+      demo_date:      null,
       date_created:   opp.date_created || '',
       date_updated:   opp.date_updated || '',
     });
   }
-
-  // Log scheduled meetings for debugging
-  const scheduled = deals.filter(d => d.demo_status === 'Scheduled');
-  console.log(`Deals with Demo Status=Scheduled: ${scheduled.length}`);
-  if (scheduled.length) scheduled.slice(0,5).forEach(d =>
-    console.log(`  ${d.company} | ${d.demo_date} | ${d.stage}`)
-  );
-
   return deals;
 }
 
@@ -187,7 +156,6 @@ function buildDashboard(deals) {
     newByMonth[key] = (newByMonth[key]||0) + 1;
   }
 
-  // WoW — computed from date_created / date_updated, no external storage needed
   const DAY = 86400000;
   const now = Date.now();
   const thisWeekCutoff = now - 7  * DAY;
@@ -218,26 +186,24 @@ function buildDashboard(deals) {
 
   return {
     kpis, changes,
-    deals:           deals.sort((a,b) => b.monthly_value - a.monthly_value),
-    by_stage:        byStage,
-    new_by_month:    newByMonth,
-    pipeline_review: [],   // requires lead-level fetch; not available in fast mode
-    updated_at:      new Date().toISOString(),
+    deals:        deals.sort((a,b) => b.monthly_value - a.monthly_value),
+    by_stage:     byStage,
+    new_by_month: newByMonth,
+    updated_at:   new Date().toISOString(),
   };
 }
 
-// ─── Fetch, process, cache ─────────────────────────────────────────────────────
+// ─── Fetch, process, cache (opps only — fast) ─────────────────────────────────
 async function fetchAndCache() {
   const opps  = await fetchAllParasolOpps();
   const deals = processOpps(opps);
   _cache = buildDashboard(deals);
-  console.log('Data ready —', _cache.kpis.total, 'deals');
+  console.log('Opp data ready —', _cache.kpis.total, 'deals');
   return _cache;
 }
 
-// Ensures only one concurrent fetch runs; subsequent callers wait for it
 async function ensureData(force = false) {
-  if (force) _cache = null;
+  if (force) { _cache = null; _leadCache = null; }
   if (_cache) return _cache;
   if (!_fetchPromise) {
     _fetchPromise = fetchAndCache().finally(() => { _fetchPromise = null; });
@@ -246,31 +212,38 @@ async function ensureData(force = false) {
 }
 
 // ─── Lead field discovery ─────────────────────────────────────────────────────
-let _leadFieldIds = null;
-
 async function discoverLeadFields() {
-  if (_leadFieldIds) return _leadFieldIds;
   const res = await fetch('https://api.close.com/api/v1/custom_field/lead/?_limit=200', { headers: authHeaders() });
   if (!res.ok) { console.error('Lead field discovery failed:', res.status); return {}; }
   const data = await res.json();
   const fields = data.data || [];
   console.log('Lead custom fields:', fields.map(f => `"${f.name}" → ${f.id}`).join(', '));
+
   const ids = {};
   for (const f of fields) {
     const n = (f.name || '').toLowerCase();
-    if (n.includes('pipeline review') || n.includes('next step')) ids.pipeline_review = f.id;
-    if (n.includes('a2p'))                                        ids.a2p            = f.id;
+    // Pipeline Review notes — match several common naming patterns
+    if (!ids.pipeline_review && (
+      n.includes('pipeline review') || n.includes('pipeline note') ||
+      n.includes('next step')       || n.includes('nextstep')
+    )) ids.pipeline_review = f.id;
+    // A2P 10DLC Registration Status
+    if (!ids.a2p && n.includes('a2p')) ids.a2p = f.id;
+    // Demo Status (e.g. "Demo Status" / "Meeting Status")
+    if (!ids.demo_status && n.includes('demo') && n.includes('status')) ids.demo_status = f.id;
+    // Demo Date (e.g. "Demo Date" / "Meeting Date")
+    if (!ids.demo_date && n.includes('demo') && n.includes('date')) ids.demo_date = f.id;
   }
   console.log('Mapped lead field IDs:', ids);
-  _leadFieldIds = ids;
   return ids;
 }
 
+// ─── Fetch leads in parallel batches ─────────────────────────────────────────
 async function fetchLeadsInBatches(leadIds) {
   const BATCH = 50;
   const batches = [];
   for (let i = 0; i < leadIds.length; i += BATCH) batches.push(leadIds.slice(i, i + BATCH));
-  console.log(`Fetching ${leadIds.length} leads in ${batches.length} parallel batches…`);
+  console.log(`Fetching ${leadIds.length} leads in ${batches.length} batches…`);
 
   const results = await Promise.all(batches.map(async batch => {
     const query = batch.map(id => `id:"${id}"`).join(' OR ');
@@ -287,26 +260,54 @@ async function fetchLeadsInBatches(leadIds) {
   return map;
 }
 
-// ─── Pipeline Review cache ────────────────────────────────────────────────────
-let _prCache        = null;
-let _prFetchPromise = null;
+// ─── Shared lead data cache ───────────────────────────────────────────────────
+// Both pipeline-review and meetings use this; it is built lazily on first call.
+async function ensureLeadData(force = false) {
+  if (force) _leadCache = null;
+  if (_leadCache) return _leadCache;
+  if (!_leadPromise) {
+    _leadPromise = (async () => {
+      const data = await ensureData();
+      const [fieldIds, leadMap] = await Promise.all([
+        discoverLeadFields(),
+        fetchLeadsInBatches([...new Set(data.deals.map(d => d.lead_id).filter(Boolean))]),
+      ]);
+      _leadCache = { leadMap, fieldIds };
+      return _leadCache;
+    })().finally(() => { _leadPromise = null; });
+  }
+  return _leadPromise;
+}
 
-async function buildPipelineReviewData() {
-  const [fieldIds] = await Promise.all([discoverLeadFields(), ensureData()]);
+// ─── Parse a demo date value from a lead custom field ─────────────────────────
+function parseDemoDate(v) {
+  if (!v) return null;
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0];
+}
 
-  const deals   = (_cache && _cache.deals) || [];
-  const leadIds = [...new Set(deals.map(d => d.lead_id).filter(Boolean))];
-  const leadMap = await fetchLeadsInBatches(leadIds);
+// ─── Enrich one deal with lead-level custom fields ────────────────────────────
+function enrichDeal(deal, leadMap, fieldIds) {
+  const custom     = leadMap[deal.lead_id] || {};
+  const demoStatus = fieldIds.demo_status ? (custom[fieldIds.demo_status] || '') : '';
+  const demoDate   = fieldIds.demo_date   ? parseDemoDate(custom[fieldIds.demo_date]) : null;
+  return {
+    ...deal,
+    pipeline_review: fieldIds.pipeline_review ? (custom[fieldIds.pipeline_review] || '') : '',
+    a2p_status:      fieldIds.a2p             ? (custom[fieldIds.a2p]             || '') : '',
+    demo_status:     demoStatus,
+    demo_date:       demoDate,
+    demo_completed:  demoStatus === 'Completed',
+  };
+}
 
-  const prKey  = fieldIds.pipeline_review;
-  const a2pKey = fieldIds.a2p;
+// ─── Pipeline Review — lazy-loaded ───────────────────────────────────────────
+async function buildPipelineReviewData(force = false) {
+  const { leadMap, fieldIds } = await ensureLeadData(force);
+  const deals = (_cache && _cache.deals) || [];
 
   const enriched = deals
-    .map(d => ({
-      ...d,
-      pipeline_review: prKey  ? (leadMap[d.lead_id]?.[prKey]  || '') : '',
-      a2p_status:      a2pKey ? (leadMap[d.lead_id]?.[a2pKey] || '') : '',
-    }))
+    .map(d => enrichDeal(d, leadMap, fieldIds))
     .filter(d => d.pipeline_review || d.a2p_status)
     .sort((a, b) => b.monthly_value - a.monthly_value);
 
@@ -314,19 +315,11 @@ async function buildPipelineReviewData() {
   return { deals: enriched, field_ids: fieldIds, updated_at: new Date().toISOString() };
 }
 
-async function ensurePipelineReview(force = false) {
-  if (force) _prCache = null;
-  if (_prCache) return _prCache;
-  if (!_prFetchPromise) {
-    _prFetchPromise = buildPipelineReviewData()
-      .then(r => { _prCache = r; return r; })
-      .finally(() => { _prFetchPromise = null; });
-  }
-  return _prFetchPromise;
-}
+// ─── Meetings — filters lead-enriched deals for next week's demos ─────────────
+async function getMeetings() {
+  const { leadMap, fieldIds } = await ensureLeadData();
+  const deals = (_cache && _cache.deals) || [];
 
-// ─── Meetings: filter cached deals ────────────────────────────────────────────
-function getMeetings() {
   const now    = new Date();
   const day    = now.getDay();
   const toMon  = day === 0 ? 1 : 8 - day;
@@ -335,18 +328,22 @@ function getMeetings() {
   const fmt    = d => d.toISOString().split('T')[0];
   const weekStart = fmt(mon), weekEnd = fmt(sun);
 
-  const deals = (_cache && _cache.deals) || [];
-  const meetings = deals.filter(d =>
-    d.demo_date &&
-    d.demo_status === 'Scheduled' &&
-    d.demo_date >= weekStart &&
-    d.demo_date <= weekEnd
-  ).map(d => ({
-    lead_id: d.lead_id, lead_name: d.company,
-    demo_date: d.demo_date, demo_status: d.demo_status,
-    monthly_value: d.monthly_value, stage: d.stage,
-    note: '',
-  }));
+  // Log all scheduled demos so we can verify in Vercel logs
+  const allScheduled = deals.map(d => enrichDeal(d, leadMap, fieldIds))
+    .filter(d => d.demo_status === 'Scheduled');
+  console.log(`Total deals with Demo Status=Scheduled: ${allScheduled.length}`);
+  allScheduled.slice(0,5).forEach(d =>
+    console.log(`  ${d.company} | date=${d.demo_date} | stage=${d.stage}`)
+  );
+
+  const meetings = allScheduled
+    .filter(d => d.demo_date && d.demo_date >= weekStart && d.demo_date <= weekEnd)
+    .map(d => ({
+      lead_id: d.lead_id, lead_name: d.company,
+      demo_date: d.demo_date, demo_status: d.demo_status,
+      monthly_value: d.monthly_value, stage: d.stage,
+      note: '',
+    }));
 
   console.log(`Meetings ${weekStart}–${weekEnd}: ${meetings.length}`);
   return { meetings, week_start: weekStart, week_end: weekEnd };
@@ -356,7 +353,6 @@ function getMeetings() {
 app.get('/api/dashboard', async (req, res) => {
   try {
     const force = req.query.refresh === '1';
-    if (force) _prCache = null; // invalidate PR cache too
     const data = await ensureData(force);
     res.json({ ...data, cached: _fetchPromise === null });
   } catch (e) {
@@ -367,7 +363,7 @@ app.get('/api/dashboard', async (req, res) => {
 
 app.get('/api/pipeline-review', async (req, res) => {
   try {
-    const data = await ensurePipelineReview(req.query.refresh === '1');
+    const data = await buildPipelineReviewData(req.query.refresh === '1');
     res.json(data);
   } catch (e) {
     console.error('Pipeline Review error:', e.message);
@@ -378,19 +374,11 @@ app.get('/api/pipeline-review', async (req, res) => {
 app.get('/api/meetings', async (req, res) => {
   try {
     await ensureData();
-    res.json(getMeetings());
+    const data = await getMeetings();
+    res.json(data);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
-});
-
-// Debug: fetch raw opp by ID
-app.get('/api/debug/opp/:id', async (req, res) => {
-  try {
-    const r = await fetch(`https://api.close.com/api/v1/opportunity/${req.params.id}/`, { headers: authHeaders() });
-    if (!r.ok) return res.status(r.status).json({ error: await r.text() });
-    res.json(await r.json());
-  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // Debug: list all lead custom field definitions
@@ -403,10 +391,50 @@ app.get('/api/debug/lead-fields', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Debug: list all opportunity custom field definitions
+app.get('/api/debug/opp-fields', async (req, res) => {
+  try {
+    const r = await fetch('https://api.close.com/api/v1/custom_field/opportunity/?_limit=200', { headers: authHeaders() });
+    if (!r.ok) return res.status(r.status).json({ error: await r.text() });
+    const data = await r.json();
+    res.json((data.data || []).map(f => ({ id: f.id, name: f.name, type: f.type })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Debug: show what lead IDs and matched field values look like right now
+app.get('/api/debug/lead-sample', async (req, res) => {
+  try {
+    const fieldIds = await discoverLeadFields();
+    // Fetch a few leads from the pipeline
+    const data = await ensureData();
+    const sampleLeadIds = data.deals.slice(0, 5).map(d => d.lead_id).filter(Boolean);
+    const leadMap = await fetchLeadsInBatches(sampleLeadIds);
+    const samples = sampleLeadIds.map(id => ({
+      lead_id: id,
+      company: data.deals.find(d => d.lead_id === id)?.company,
+      custom_keys: Object.keys(leadMap[id] || {}),
+      pipeline_review: fieldIds.pipeline_review ? leadMap[id]?.[fieldIds.pipeline_review] : '(field not found)',
+      a2p_status:      fieldIds.a2p             ? leadMap[id]?.[fieldIds.a2p]             : '(field not found)',
+      demo_status:     fieldIds.demo_status      ? leadMap[id]?.[fieldIds.demo_status]     : '(field not found)',
+      demo_date:       fieldIds.demo_date        ? leadMap[id]?.[fieldIds.demo_date]       : '(field not found)',
+    }));
+    res.json({ field_ids: fieldIds, samples });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Debug: fetch raw lead by ID
 app.get('/api/debug/lead/:id', async (req, res) => {
   try {
     const r = await fetch(`https://api.close.com/api/v1/lead/${req.params.id}/`, { headers: authHeaders() });
+    if (!r.ok) return res.status(r.status).json({ error: await r.text() });
+    res.json(await r.json());
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Debug: fetch raw opp by ID
+app.get('/api/debug/opp/:id', async (req, res) => {
+  try {
+    const r = await fetch(`https://api.close.com/api/v1/opportunity/${req.params.id}/`, { headers: authHeaders() });
     if (!r.ok) return res.status(r.status).json({ error: await r.text() });
     res.json(await r.json());
   } catch (e) { res.status(500).json({ error: e.message }); }
