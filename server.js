@@ -393,6 +393,25 @@ app.get('/api/debug/opp/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Debug: list all lead custom field definitions
+app.get('/api/debug/lead-fields', async (req, res) => {
+  try {
+    const r = await fetch('https://api.close.com/api/v1/custom_field/lead/?_limit=200', { headers: authHeaders() });
+    if (!r.ok) return res.status(r.status).json({ error: await r.text() });
+    const data = await r.json();
+    res.json((data.data || []).map(f => ({ id: f.id, name: f.name, type: f.type })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Debug: fetch raw lead by ID
+app.get('/api/debug/lead/:id', async (req, res) => {
+  try {
+    const r = await fetch(`https://api.close.com/api/v1/lead/${req.params.id}/`, { headers: authHeaders() });
+    if (!r.ok) return res.status(r.status).json({ error: await r.text() });
+    res.json(await r.json());
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── Startup (local dev only) ──────────────────────────────────────────────────
 if (require.main === module) {
   app.listen(PORT, () => {
