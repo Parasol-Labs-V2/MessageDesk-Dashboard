@@ -245,6 +245,86 @@ async function ensureData(force = false) {
   return _fetchPromise;
 }
 
+// ─── Lead field discovery ─────────────────────────────────────────────────────
+let _leadFieldIds = null;
+
+async function discoverLeadFields() {
+  if (_leadFieldIds) return _leadFieldIds;
+  const res = await fetch('https://api.close.com/api/v1/custom_field/lead/?_limit=200', { headers: authHeaders() });
+  if (!res.ok) { console.error('Lead field discovery failed:', res.status); return {}; }
+  const data = await res.json();
+  const fields = data.data || [];
+  console.log('Lead custom fields:', fields.map(f => `"${f.name}" → ${f.id}`).join(', '));
+  const ids = {};
+  for (const f of fields) {
+    const n = (f.name || '').toLowerCase();
+    if (n.includes('pipeline review') || n.includes('next step')) ids.pipeline_review = f.id;
+    if (n.includes('a2p'))                                        ids.a2p            = f.id;
+  }
+  console.log('Mapped lead field IDs:', ids);
+  _leadFieldIds = ids;
+  return ids;
+}
+
+async function fetchLeadsInBatches(leadIds) {
+  const BATCH = 50;
+  const batches = [];
+  for (let i = 0; i < leadIds.length; i += BATCH) batches.push(leadIds.slice(i, i + BATCH));
+  console.log(`Fetching ${leadIds.length} leads in ${batches.length} parallel batches…`);
+
+  const results = await Promise.all(batches.map(async batch => {
+    const query = batch.map(id => `id:"${id}"`).join(' OR ');
+    const url = `https://api.close.com/api/v1/lead/?query=${encodeURIComponent(query)}&_fields=id,custom&_limit=${BATCH}`;
+    const res = await fetch(url, { headers: authHeaders() });
+    if (!res.ok) { console.error('Lead batch error:', res.status); return []; }
+    const data = await res.json();
+    return data.data || [];
+  }));
+
+  const map = {};
+  for (const batch of results) for (const lead of batch) map[lead.id] = lead.custom || {};
+  console.log(`Lead data received for ${Object.keys(map).length} leads`);
+  return map;
+}
+
+// ─── Pipeline Review cache ────────────────────────────────────────────────────
+let _prCache        = null;
+let _prFetchPromise = null;
+
+async function buildPipelineReviewData() {
+  const [fieldIds] = await Promise.all([discoverLeadFields(), ensureData()]);
+
+  const deals   = (_cache && _cache.deals) || [];
+  const leadIds = [...new Set(deals.map(d => d.lead_id).filter(Boolean))];
+  const leadMap = await fetchLeadsInBatches(leadIds);
+
+  const prKey  = fieldIds.pipeline_review;
+  const a2pKey = fieldIds.a2p;
+
+  const enriched = deals
+    .map(d => ({
+      ...d,
+      pipeline_review: prKey  ? (leadMap[d.lead_id]?.[prKey]  || '') : '',
+      a2p_status:      a2pKey ? (leadMap[d.lead_id]?.[a2pKey] || '') : '',
+    }))
+    .filter(d => d.pipeline_review || d.a2p_status)
+    .sort((a, b) => b.monthly_value - a.monthly_value);
+
+  console.log(`Pipeline Review: ${enriched.length} deals with notes`);
+  return { deals: enriched, field_ids: fieldIds, updated_at: new Date().toISOString() };
+}
+
+async function ensurePipelineReview(force = false) {
+  if (force) _prCache = null;
+  if (_prCache) return _prCache;
+  if (!_prFetchPromise) {
+    _prFetchPromise = buildPipelineReviewData()
+      .then(r => { _prCache = r; return r; })
+      .finally(() => { _prFetchPromise = null; });
+  }
+  return _prFetchPromise;
+}
+
 // ─── Meetings: filter cached deals ────────────────────────────────────────────
 function getMeetings() {
   const now    = new Date();
@@ -275,10 +355,22 @@ function getMeetings() {
 // ─── Routes ───────────────────────────────────────────────────────────────────
 app.get('/api/dashboard', async (req, res) => {
   try {
-    const data = await ensureData(req.query.refresh === '1');
+    const force = req.query.refresh === '1';
+    if (force) _prCache = null; // invalidate PR cache too
+    const data = await ensureData(force);
     res.json({ ...data, cached: _fetchPromise === null });
   } catch (e) {
     console.error('Dashboard error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/pipeline-review', async (req, res) => {
+  try {
+    const data = await ensurePipelineReview(req.query.refresh === '1');
+    res.json(data);
+  } catch (e) {
+    console.error('Pipeline Review error:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
