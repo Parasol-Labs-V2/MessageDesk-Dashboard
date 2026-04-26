@@ -8,13 +8,17 @@ const PORT = process.env.PORT || 3000;
 const API_KEY = process.env.CLOSE_API_KEY || '';
 const PARASOL_PIPELINE_ID = 'pipe_1lXFBvtVQXtRgcjonTFr1Y';
 
+// Hardcoded lead-level custom field string-name keys (confirmed via debug endpoint)
+const LEAD_KEY_PIPELINE_REVIEW = 'Pipeline Review';
+const LEAD_KEY_A2P             = 'A2P 10DLC Registration Status';
+
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ─── In-memory caches ──────────────────────────────────────────────────────────
 let _cache       = null;
 let _fetchPromise = null;
-let _leadCache   = null;   // { leadMap: {lead_id → custom}, fieldIds }
+let _leadCache   = null;   // { leadMap: {lead_id → custom_obj} }
 let _leadPromise = null;
 
 // ─── Auth ──────────────────────────────────────────────────────────────────────
@@ -80,12 +84,55 @@ function scoreOpp(opp) {
   return Math.min(s, 99);
 }
 
-// ─── Fetch all Parasol pipeline opportunities ──────────────────────────────────
+// ─── Opp custom field extraction ───────────────────────────────────────────────
+// Close.io returns opp custom fields as top-level dotted keys: opp['custom.KEY']
+// KEY may be a string name ("Demo Status") or a cf_xxx ID — handle both.
+function extractOppCustom(opp) {
+  const c = { ...(opp.custom || {}) };
+  for (const [k, v] of Object.entries(opp)) {
+    if (k.startsWith('custom.')) c[k.slice('custom.'.length)] = v;
+  }
+  return c;
+}
+
+// ─── Opp-level Demo Status / Demo Date detection (value-based) ────────────────
+const DEMO_STATUS_VALS = new Set([
+  'Scheduled','Completed','No Show','No-Show','Cancelled','Rescheduled','Booked','Held','No showed',
+]);
+const DEMO_DATE_RE = /^\d{4}-\d{2}-\d{2}/;
+
+let _oppFieldIds = null;
+
+function detectOppFields(opps) {
+  if (_oppFieldIds) return _oppFieldIds;
+  const ids = {};
+  for (const opp of opps) {
+    const c = extractOppCustom(opp);
+    for (const [k, v] of Object.entries(c)) {
+      if (!ids.demo_status && typeof v === 'string' && DEMO_STATUS_VALS.has(v)) ids.demo_status = k;
+      if (!ids.demo_date   && typeof v === 'string' && DEMO_DATE_RE.test(v))    ids.demo_date   = k;
+    }
+    if (ids.demo_status && ids.demo_date) break;
+  }
+  console.log('Opp custom field IDs detected:', JSON.stringify(ids));
+  _oppFieldIds = ids;
+  return ids;
+}
+
+function parseDemoDate(v) {
+  if (!v) return null;
+  if (typeof v === 'number') {
+    const d = new Date(v); return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0];
+  }
+  const d = new Date(v); return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0];
+}
+
+// ─── Fetch all Parasol pipeline opportunities (includes opp custom fields) ─────
 async function fetchAllParasolOpps() {
   const fields = [
     'id','lead_id','lead_name','status_label',
     'value','value_period','value_formatted',
-    'date_created','date_updated',
+    'date_created','date_updated','custom',
   ].join(',');
   const base = `https://api.close.com/api/v1/opportunity/?pipeline_id=${PARASOL_PIPELINE_ID}&_limit=100&_fields=${fields}`;
 
@@ -104,99 +151,63 @@ async function fetchAllParasolOpps() {
   return all;
 }
 
-// ─── Fetch all Parasol leads (by pipeline membership) ─────────────────────────
-// Uses the proven opportunity-filter query: opportunity(pipeline_id:"...")
-async function fetchAllParasolLeads() {
-  const QUERY  = `opportunity(pipeline_id:"${PARASOL_PIPELINE_ID}")`;
-  const fields = 'id,custom';
-  const base   = `https://api.close.com/api/v1/lead/?query=${encodeURIComponent(QUERY)}&_fields=${fields}&_limit=100`;
-
-  let all = [], skip = 0;
-  while (true) {
-    const res = await fetch(`${base}&_skip=${skip}`, { headers: authHeaders() });
-    if (!res.ok) throw new Error(`Close lead API ${res.status}: ${(await res.text()).slice(0,200)}`);
-    const data = await res.json();
-    const rows = data.data || [];
-    all = all.concat(rows);
-    console.log(`Fetched leads: ${all.length}`);
-    if (rows.length < 100) break;
-    skip += 100;
-  }
-  console.log(`Total Parasol leads: ${all.length}`);
-  return all;
-}
-
-// ─── Value-based field ID detection (no need to know field names) ─────────────
-// Scans actual lead custom field values to identify which cf_xxx corresponds to
-// which concept. This is resilient to field renames in Close.io.
-const PR_EMOJI_RE    = /^[\u{1F7E1}\u{1F534}\u{1F7E2}✅⚠\u{1F535}⚪\u{1F7E0}]/u;
-const PR_KEYWORD_RE  = /awaiting|blocked by|next step|follow.?up|pending|waiting|schedule|action/i;
-const A2P_RE         = /^\d+\.\s+\S/;  // "1. Not Started", "5. Complete ..."
-const DEMO_DATE_RE   = /^\d{4}-\d{2}-\d{2}/;
-const DEMO_STATUS_VALS = new Set([
-  'Scheduled','Completed','No Show','No-Show','Cancelled','Rescheduled','Booked','Held','No showed',
-]);
-
-function detectLeadFieldsByValue(leads) {
-  const ids = {};
-
-  // Dump first 3 leads' raw custom keys for debugging
-  leads.slice(0, 3).forEach((lead, i) => {
-    const c = lead.custom || {};
-    const keys = Object.keys(c);
-    console.log(`[lead ${i}] ${keys.length} custom keys:`,
-      keys.map(k => `${k}=${JSON.stringify(c[k]).slice(0,40)}`).join(' | ')
-    );
-  });
-
-  for (const lead of leads) {
-    const c = lead.custom || {};
-    for (const [k, v] of Object.entries(c)) {
-      if (typeof v !== 'string' || !v) continue;
-      // A2P: "1. Not Started" / "5. Complete ..."
-      if (!ids.a2p && A2P_RE.test(v)) ids.a2p = k;
-      // Demo Status: known enum values
-      if (!ids.demo_status && DEMO_STATUS_VALS.has(v)) ids.demo_status = k;
-      // Demo Date: ISO date string (skip if same field as a2p or demo_status)
-      if (!ids.demo_date && k !== ids.a2p && k !== ids.demo_status && DEMO_DATE_RE.test(v)) ids.demo_date = k;
-      // Pipeline Review: emoji-prefixed OR keyword text (not the a2p field)
-      if (!ids.pipeline_review && k !== ids.a2p && (PR_EMOJI_RE.test(v) || (PR_KEYWORD_RE.test(v) && v.length > 15))) {
-        ids.pipeline_review = k;
-      }
-    }
-    if (ids.a2p && ids.demo_status && ids.demo_date && ids.pipeline_review) break;
-  }
-
-  console.log('Detected lead field IDs (by value):', JSON.stringify(ids));
-  return ids;
-}
-
-// ─── Process opps into basic deals ────────────────────────────────────────────
+// ─── Process opps into deals (demo date/status read from opp custom fields) ────
 function processOpps(opps) {
+  const fieldIds = detectOppFields(opps);
   const deals = [];
   for (const opp of opps) {
-    const stage    = STAGE_MAP[opp.status_label] || opp.status_label || 'Unknown';
-    const category = getCategory(stage);
-    const monthly  = toMonthly(opp);
-    const ageDays  = ACTIVE_STAGES.has(stage)
+    const custom      = extractOppCustom(opp);
+    const stage       = STAGE_MAP[opp.status_label] || opp.status_label || 'Unknown';
+    const category    = getCategory(stage);
+    const monthly     = toMonthly(opp);
+    const ageDays     = ACTIVE_STAGES.has(stage)
       ? Math.floor((Date.now() - new Date(opp.date_created).getTime()) / 86400000) : null;
+    const demoStatus  = fieldIds.demo_status ? (custom[fieldIds.demo_status] || '') : '';
+    const demoDate    = fieldIds.demo_date   ? parseDemoDate(custom[fieldIds.demo_date]) : null;
 
     deals.push({
       id: opp.id, lead_id: opp.lead_id,
       company:        opp.lead_name || '',
       stage, category, monthly_value: monthly, age_days: ageDays,
       score:          scoreOpp(opp),
-      // Lead-level fields — populated after lead data is loaded
+      // Lead-level fields populated after lead fetch
       a2p_status:     '',
       pipeline_review:'',
-      demo_completed: false,
-      demo_status:    '',
-      demo_date:      null,
+      demo_status:    demoStatus,
+      demo_date:      demoDate,
+      demo_completed: demoStatus === 'Completed',
       date_created:   opp.date_created || '',
       date_updated:   opp.date_updated || '',
     });
   }
+
+  const scheduled = deals.filter(d => d.demo_status === 'Scheduled');
+  console.log(`Deals with demo_status=Scheduled: ${scheduled.length} (field: ${fieldIds.demo_status || 'not found'})`);
+  scheduled.slice(0,3).forEach(d => console.log(`  ${d.company} | ${d.demo_date}`));
+
   return deals;
+}
+
+// ─── Fetch leads by their IDs (individual endpoints, chunked concurrency) ──────
+// Pipeline query returns 0 (broken in current Close.io API), so we fetch individually.
+// Lead custom fields use string name keys: "Pipeline Review", "A2P 10DLC Registration Status"
+async function fetchLeadsByIds(leadIds) {
+  const CHUNK = 50; // parallel requests per chunk
+  const map   = {};
+
+  for (let i = 0; i < leadIds.length; i += CHUNK) {
+    const chunk = leadIds.slice(i, i + CHUNK);
+    const results = await Promise.allSettled(chunk.map(id =>
+      fetch(`https://api.close.com/api/v1/lead/${id}/?_fields=id,custom`, { headers: authHeaders() })
+        .then(r => r.ok ? r.json() : null)
+        .catch(() => null)
+    ));
+    for (const r of results) {
+      if (r.status === 'fulfilled' && r.value) map[r.value.id] = r.value.custom || {};
+    }
+    console.log(`Leads fetched: ${Object.keys(map).length}/${leadIds.length}`);
+  }
+  return map;
 }
 
 // ─── Build dashboard payload ───────────────────────────────────────────────────
@@ -260,8 +271,9 @@ function buildDashboard(deals) {
   };
 }
 
-// ─── Fetch, process, cache (opps only — fast) ─────────────────────────────────
+// ─── Fetch, process, cache (opps only — fast, includes opp custom fields) ──────
 async function fetchAndCache() {
+  _oppFieldIds = null; // reset so detection runs fresh
   const opps  = await fetchAllParasolOpps();
   const deals = processOpps(opps);
   _cache = buildDashboard(deals);
@@ -270,7 +282,7 @@ async function fetchAndCache() {
 }
 
 async function ensureData(force = false) {
-  if (force) { _cache = null; _leadCache = null; }
+  if (force) { _cache = null; _leadCache = null; _oppFieldIds = null; }
   if (_cache) return _cache;
   if (!_fetchPromise) {
     _fetchPromise = fetchAndCache().finally(() => { _fetchPromise = null; });
@@ -279,74 +291,60 @@ async function ensureData(force = false) {
 }
 
 // ─── Shared lead data cache ───────────────────────────────────────────────────
-// Fetches all Parasol leads once; both pipeline-review and meetings reuse it.
 async function ensureLeadData(force = false) {
   if (force) _leadCache = null;
   if (_leadCache) return _leadCache;
   if (!_leadPromise) {
     _leadPromise = (async () => {
-      await ensureData();  // need opp data first (for fallback lead_id list)
-      const leads    = await fetchAllParasolLeads();
-      const fieldIds = detectLeadFieldsByValue(leads);
-      // Build leadId → custom map
-      const leadMap  = {};
-      for (const l of leads) leadMap[l.id] = l.custom || {};
-      _leadCache = { leadMap, fieldIds, leadCount: leads.length };
+      const data    = await ensureData();
+      const leadIds = [...new Set(data.deals.map(d => d.lead_id).filter(Boolean))];
+      const leadMap = await fetchLeadsByIds(leadIds);
+      console.log(`Lead cache ready: ${Object.keys(leadMap).length} leads`);
+      // Log sample to confirm field keys
+      const sampleId = leadIds[0];
+      if (sampleId && leadMap[sampleId]) {
+        const c = leadMap[sampleId];
+        console.log(`Sample lead keys: ${Object.keys(c).join(', ')}`);
+        console.log(`  Pipeline Review: ${c[LEAD_KEY_PIPELINE_REVIEW] || '(empty)'}`);
+        console.log(`  A2P: ${c[LEAD_KEY_A2P] || '(empty)'}`);
+      }
+      _leadCache = { leadMap };
       return _leadCache;
     })().finally(() => { _leadPromise = null; });
   }
   return _leadPromise;
 }
 
-// ─── Parse demo date value ────────────────────────────────────────────────────
-function parseDemoDate(v) {
-  if (!v) return null;
-  if (typeof v === 'number') {
-    // epoch ms
-    const d = new Date(v);
-    return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0];
-  }
-  const d = new Date(v);
-  return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0];
-}
-
 // ─── Enrich a deal with lead-level custom fields ──────────────────────────────
-function enrichDeal(deal, leadMap, fieldIds) {
-  const custom     = leadMap[deal.lead_id] || {};
-  const demoStatus = fieldIds.demo_status ? (custom[fieldIds.demo_status] || '') : '';
-  const demoDate   = fieldIds.demo_date   ? parseDemoDate(custom[fieldIds.demo_date]) : null;
+function enrichDeal(deal, leadMap) {
+  const custom = leadMap[deal.lead_id] || {};
   return {
     ...deal,
-    pipeline_review: fieldIds.pipeline_review ? (custom[fieldIds.pipeline_review] || '') : '',
-    a2p_status:      fieldIds.a2p             ? (custom[fieldIds.a2p]             || '') : '',
-    demo_status:     demoStatus,
-    demo_date:       demoDate,
-    demo_completed:  demoStatus === 'Completed',
+    pipeline_review: custom[LEAD_KEY_PIPELINE_REVIEW] || '',
+    a2p_status:      custom[LEAD_KEY_A2P]             || '',
   };
 }
 
 // ─── Pipeline Review — lazy-loaded ───────────────────────────────────────────
 async function buildPipelineReviewData(force = false) {
-  const { leadMap, fieldIds, leadCount } = await ensureLeadData(force);
+  const { leadMap } = await ensureLeadData(force);
   const deals = (_cache && _cache.deals) || [];
 
   const enriched = deals
-    .map(d => enrichDeal(d, leadMap, fieldIds))
+    .map(d => enrichDeal(d, leadMap))
     .filter(d => d.pipeline_review || d.a2p_status)
     .sort((a, b) => b.monthly_value - a.monthly_value);
 
-  console.log(`Pipeline Review: ${enriched.length} deals with notes (from ${leadCount} leads, fieldIds=${JSON.stringify(fieldIds)})`);
+  console.log(`Pipeline Review: ${enriched.length} deals with notes out of ${deals.length} total`);
   return {
-    deals: enriched,
-    field_ids: fieldIds,
-    lead_count: leadCount,
+    deals:     enriched,
     updated_at: new Date().toISOString(),
   };
 }
 
-// ─── Meetings — filters by demo_status=Scheduled & demo_date next week ────────
+// ─── Meetings — reads demo_date/demo_status from opp-level data ───────────────
 async function getMeetings() {
-  const { leadMap, fieldIds, leadCount } = await ensureLeadData();
+  await ensureData();
   const deals = (_cache && _cache.deals) || [];
 
   const now    = new Date();
@@ -357,10 +355,7 @@ async function getMeetings() {
   const fmt    = d => d.toISOString().split('T')[0];
   const weekStart = fmt(mon), weekEnd = fmt(sun);
 
-  const enrichedDeals = deals.map(d => enrichDeal(d, leadMap, fieldIds));
-
-  const allScheduled = enrichedDeals.filter(d => d.demo_status === 'Scheduled');
-  console.log(`Leads fetched=${leadCount} fieldIds=${JSON.stringify(fieldIds)}`);
+  const allScheduled = deals.filter(d => d.demo_status === 'Scheduled');
   console.log(`Deals with demo_status=Scheduled: ${allScheduled.length}`);
   allScheduled.slice(0,5).forEach(d =>
     console.log(`  ${d.company} | date=${d.demo_date} | stage=${d.stage}`)
@@ -376,7 +371,7 @@ async function getMeetings() {
     }));
 
   console.log(`Meetings ${weekStart}–${weekEnd}: ${meetings.length}`);
-  return { meetings, week_start: weekStart, week_end: weekEnd, field_ids: fieldIds };
+  return { meetings, week_start: weekStart, week_end: weekEnd };
 }
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
@@ -403,7 +398,6 @@ app.get('/api/pipeline-review', async (req, res) => {
 
 app.get('/api/meetings', async (req, res) => {
   try {
-    await ensureData();
     const data = await getMeetings();
     res.json(data);
   } catch (e) {
@@ -411,7 +405,25 @@ app.get('/api/meetings', async (req, res) => {
   }
 });
 
-// Debug: list all lead custom field definitions from Close API
+// Debug: raw lead by ID
+app.get('/api/debug/lead/:id', async (req, res) => {
+  try {
+    const r = await fetch(`https://api.close.com/api/v1/lead/${req.params.id}/`, { headers: authHeaders() });
+    if (!r.ok) return res.status(r.status).json({ error: await r.text() });
+    res.json(await r.json());
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Debug: raw opp by ID
+app.get('/api/debug/opp/:id', async (req, res) => {
+  try {
+    const r = await fetch(`https://api.close.com/api/v1/opportunity/${req.params.id}/`, { headers: authHeaders() });
+    if (!r.ok) return res.status(r.status).json({ error: await r.text() });
+    res.json(await r.json());
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Debug: list all lead custom field definitions
 app.get('/api/debug/lead-fields', async (req, res) => {
   try {
     const r = await fetch('https://api.close.com/api/v1/custom_field/lead/?_limit=200', { headers: authHeaders() });
@@ -421,7 +433,7 @@ app.get('/api/debug/lead-fields', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Debug: list all opportunity custom field definitions from Close API
+// Debug: list all opportunity custom field definitions
 app.get('/api/debug/opp-fields', async (req, res) => {
   try {
     const r = await fetch('https://api.close.com/api/v1/custom_field/opportunity/?_limit=200', { headers: authHeaders() });
@@ -431,59 +443,53 @@ app.get('/api/debug/opp-fields', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Debug: show field detection results + raw custom keys for 5 sample leads
-app.get('/api/debug/lead-sample', async (req, res) => {
+// Debug: show opp custom fields for a sample opp + what demo fields were detected
+app.get('/api/debug/opp-sample', async (req, res) => {
   try {
-    // Fetch 5 sample leads directly via individual endpoint (bypasses query format issues)
     await ensureData();
-    const sampleLeadIds = (_cache && _cache.deals || []).slice(0, 5).map(d => d.lead_id).filter(Boolean);
-    const samples = await Promise.all(sampleLeadIds.map(async id => {
-      const r = await fetch(`https://api.close.com/api/v1/lead/${id}/?_fields=id,display_name,custom`, { headers: authHeaders() });
-      if (!r.ok) return { lead_id: id, error: r.status };
-      const l = await r.json();
-      return { lead_id: id, company: l.display_name, custom_keys: Object.keys(l.custom || {}), custom: l.custom || {} };
+    const sampleOpps = (_cache && _cache.deals || []).slice(0, 5);
+    const results = await Promise.all(sampleOpps.map(async d => {
+      const r = await fetch(`https://api.close.com/api/v1/opportunity/${d.id}/?_fields=id,lead_name,status_label,custom`, { headers: authHeaders() });
+      if (!r.ok) return { id: d.id, error: r.status };
+      const opp = await r.json();
+      const extracted = extractOppCustom(opp);
+      return {
+        id: opp.id,
+        lead_name: opp.lead_name,
+        status_label: opp.status_label,
+        raw_custom: opp.custom,
+        dotted_keys: Object.keys(opp).filter(k => k.startsWith('custom.')).reduce((o,k) => { o[k] = opp[k]; return o; }, {}),
+        extracted_custom: extracted,
+      };
     }));
-
-    // Also show what the lead fetch query returns (are we getting leads?)
-    const QUERY = `opportunity(pipeline_id:"${PARASOL_PIPELINE_ID}")`;
-    const testUrl = `https://api.close.com/api/v1/lead/?query=${encodeURIComponent(QUERY)}&_fields=id,custom&_limit=5`;
-    const testRes = await fetch(testUrl, { headers: authHeaders() });
-    const testData = testRes.ok ? await testRes.json() : { error: testRes.status };
-
-    // Run value-based field detection on the query results
-    const queryLeads = testData.data || [];
-    const detectedIds = detectLeadFieldsByValue(queryLeads);
-
     res.json({
-      individual_fetch_samples: samples,
-      pipeline_query_results: {
-        total_results: testData.total_results,
-        first_5_leads: queryLeads.map(l => ({ id: l.id, custom_keys: Object.keys(l.custom || {}), custom: l.custom })),
-      },
-      detected_field_ids: detectedIds,
-      cached_lead_data: _leadCache ? {
-        lead_count: _leadCache.leadCount,
-        field_ids:  _leadCache.fieldIds,
-      } : null,
+      detected_opp_field_ids: _oppFieldIds,
+      samples: results,
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Debug: fetch raw lead by ID
-app.get('/api/debug/lead/:id', async (req, res) => {
+// Debug: show lead sample and lead cache state
+app.get('/api/debug/lead-sample', async (req, res) => {
   try {
-    const r = await fetch(`https://api.close.com/api/v1/lead/${req.params.id}/`, { headers: authHeaders() });
-    if (!r.ok) return res.status(r.status).json({ error: await r.text() });
-    res.json(await r.json());
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// Debug: fetch raw opp by ID
-app.get('/api/debug/opp/:id', async (req, res) => {
-  try {
-    const r = await fetch(`https://api.close.com/api/v1/opportunity/${req.params.id}/`, { headers: authHeaders() });
-    if (!r.ok) return res.status(r.status).json({ error: await r.text() });
-    res.json(await r.json());
+    await ensureData();
+    const sampleLeadIds = (_cache && _cache.deals || []).slice(0, 3).map(d => d.lead_id).filter(Boolean);
+    const samples = await Promise.all(sampleLeadIds.map(async id => {
+      const r = await fetch(`https://api.close.com/api/v1/lead/${id}/?_fields=id,display_name,custom`, { headers: authHeaders() });
+      if (!r.ok) return { lead_id: id, error: r.status };
+      const l = await r.json();
+      return {
+        lead_id: id, company: l.display_name,
+        custom_keys: Object.keys(l.custom || {}),
+        pipeline_review: (l.custom || {})[LEAD_KEY_PIPELINE_REVIEW],
+        a2p_status: (l.custom || {})[LEAD_KEY_A2P],
+      };
+    }));
+    res.json({
+      hardcoded_lead_keys: { pipeline_review: LEAD_KEY_PIPELINE_REVIEW, a2p: LEAD_KEY_A2P },
+      lead_cache: _leadCache ? { lead_count: Object.keys(_leadCache.leadMap).length } : null,
+      samples,
+    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
