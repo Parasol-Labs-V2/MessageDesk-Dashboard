@@ -41,7 +41,35 @@ const OWNER_MAP = {
   '163553901': 'Jonathan Goldberg',
   '163553854': 'Florencia Scopp',
   '83189293':  'Joe',
+  '163575365': 'Jonathan Goldberg',
 };
+
+// Cache for owner names fetched from HubSpot (persists for the process lifetime)
+const _ownerCache = {};
+
+async function resolveOwner(ownerId) {
+  if (!ownerId) return 'Unassigned';
+  if (OWNER_MAP[ownerId]) return OWNER_MAP[ownerId];
+  if (_ownerCache[ownerId]) return _ownerCache[ownerId];
+
+  try {
+    const res = await fetch(`https://api.hubapi.com/crm/v3/owners/${ownerId}`, {
+      headers: hubHeaders(),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const name = [data.firstName, data.lastName].filter(Boolean).join(' ') || data.email || `Owner ${ownerId}`;
+      _ownerCache[ownerId] = name;
+      console.log(`Resolved owner ${ownerId} → ${name}`);
+      return name;
+    }
+  } catch (e) {
+    console.warn(`Could not resolve owner ${ownerId}:`, e.message);
+  }
+
+  _ownerCache[ownerId] = `Owner ${ownerId}`;
+  return _ownerCache[ownerId];
+}
 
 const PROPS = [
   'dealname','dealstage','pipeline','hubspot_owner_id','closedate',
@@ -93,7 +121,7 @@ async function fetchAllDeals() {
   return all;
 }
 
-function mapDeal(raw) {
+function mapDeal(raw, ownerName) {
   const p       = raw.properties || {};
   const stageId = p.dealstage || '';
   const ownerId = p.hubspot_owner_id || '';
@@ -109,7 +137,7 @@ function mapDeal(raw) {
     isComeBack:         stageId === '3446820545',
     isDQ:               stageId === '3446820546',
     ownerId,
-    owner:              OWNER_MAP[ownerId] || (ownerId ? `Owner ${ownerId}` : 'Unassigned'),
+    owner:              ownerName,
     closedate:          parseDate(p.closedate),
     lastModified:       p.hs_lastmodifieddate ? new Date(p.hs_lastmodifieddate).toISOString() : null,
     createDate:         p.createdate ? new Date(p.createdate).toISOString() : null,
@@ -134,8 +162,20 @@ function mapDeal(raw) {
 }
 
 async function doRefresh() {
-  const raw   = await fetchAllDeals();
-  const deals = raw.map(mapDeal);
+  const raw = await fetchAllDeals();
+
+  // Collect unique unknown owner IDs and resolve them in parallel
+  const unknownIds = [...new Set(
+    raw.map(r => r.properties && r.properties.hubspot_owner_id).filter(id => id && !OWNER_MAP[id] && !_ownerCache[id])
+  )];
+  await Promise.all(unknownIds.map(resolveOwner));
+
+  const deals = await Promise.all(raw.map(async r => {
+    const ownerId = r.properties && r.properties.hubspot_owner_id;
+    const ownerName = await resolveOwner(ownerId);
+    return mapDeal(r, ownerName);
+  }));
+
   _cache     = { deals, updatedAt: new Date().toISOString() };
   _cacheTime  = Date.now();
   console.log('Cache ready:', deals.length, 'deals');
