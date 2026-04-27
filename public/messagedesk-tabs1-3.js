@@ -1,5 +1,5 @@
 /* ─── MessageDesk Tab Router ───────────────────────────────────────────────── */
-function renderMdTab(tabId, data) {
+window.renderMdTab = function(tabId, data) {
   switch (tabId) {
     case 'md-tab1': renderMdTab1(data); break;
     case 'md-tab2': renderMdTab2(data); break;
@@ -8,7 +8,7 @@ function renderMdTab(tabId, data) {
     case 'md-tab5': renderMdTab5(data); break;
     case 'md-tab6': renderMdTab6(data); break;
   }
-}
+};
 
 /* ─── Tab 1: Active Pipeline ───────────────────────────────────────────────── */
 function renderMdTab1(data) {

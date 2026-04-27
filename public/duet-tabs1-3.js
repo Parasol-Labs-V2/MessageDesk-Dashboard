@@ -1,5 +1,5 @@
 /* ─── Duet Tab Router ──────────────────────────────────────────────────────── */
-function renderDuetTab(tabId, data) {
+window.renderDuetTab = function(tabId, data) {
   switch (tabId) {
     case 'duet-tab1': renderDuetTab1(data); break;
     case 'duet-tab2': renderDuetTab2(data); break;
@@ -8,7 +8,7 @@ function renderDuetTab(tabId, data) {
     case 'duet-tab5': renderDuetTab5(data); break;
     case 'duet-tab6': renderDuetTab6(data); break;
   }
-}
+};
 
 const DUET_ACTIVE_STAGES = new Set([
   'New / Not Yet Contacted','Attempting Contact','Parasol Engaged',

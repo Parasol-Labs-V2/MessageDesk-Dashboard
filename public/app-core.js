@@ -7,88 +7,87 @@ const state = {
   duetActiveTab: 'duet-tab1',
 };
 
-/* ─── Utils ────────────────────────────────────────────────────────────────── */
-function fmt$(n) {
-  if (n === null || n === undefined || isNaN(n)) return '$0';
-  if (n >= 1000000) return '$' + (n / 1000000).toFixed(1) + 'M';
-  if (n >= 1000)    return '$' + (n / 1000).toFixed(1) + 'K';
-  return '$' + Math.round(n).toLocaleString();
-}
-function fmtNum(n) {
-  if (!n && n !== 0) return '0';
-  if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
-  if (n >= 1000)    return (n / 1000).toFixed(1) + 'K';
-  return Math.round(n).toLocaleString();
-}
-function fmtDate(d) {
-  if (!d) return '—';
-  const dt = new Date(d);
-  if (isNaN(dt)) return '—';
-  return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
-function ageDays(dateStr) {
-  if (!dateStr) return '—';
-  const d = Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000);
-  return d + 'd';
-}
-function escHtml(s) {
-  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-function isNextWeek(dateStr) {
-  if (!dateStr) return false;
-  const now  = new Date();
-  const day  = now.getDay();
-  const diff = day === 0 ? 1 : 8 - day;
-  const mon  = new Date(now); mon.setDate(now.getDate() + diff); mon.setHours(0,0,0,0);
-  const sun  = new Date(mon); sun.setDate(mon.getDate() + 6);   sun.setHours(23,59,59,999);
-  const dt   = new Date(dateStr);
-  return dt >= mon && dt <= sun;
-}
-function isPast14Days(dateStr) {
-  if (!dateStr) return false;
-  const dt = new Date(dateStr);
-  return dt >= new Date(Date.now() - 14 * 86400000);
-}
-function isLast7Days(dateStr) {
-  if (!dateStr) return false;
-  const dt = new Date(dateStr);
-  return dt >= new Date(Date.now() - 7 * 86400000);
-}
-function exportCsv(rows, filename) {
-  if (!rows.length) return;
-  const keys = Object.keys(rows[0]);
-  const lines = [keys.join(','), ...rows.map(r => keys.map(k => JSON.stringify(r[k] ?? '')).join(','))];
-  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = filename;
-  a.click();
-}
-function makeSortable(tableEl) {
-  const ths = tableEl.querySelectorAll('th.sortable');
-  ths.forEach(th => {
-    th.addEventListener('click', () => {
-      const col = th.dataset.col;
-      const isNum = th.dataset.type === 'num';
-      const rows = Array.from(tableEl.querySelectorAll('tbody tr'));
-      const asc = th.dataset.asc !== 'true';
-      th.dataset.asc = asc;
-      ths.forEach(t => { delete t.dataset.asc; t.textContent = t.textContent.replace(/ [▲▼]$/,''); });
-      th.dataset.asc = asc;
-      th.textContent = th.textContent.replace(/ [▲▼]$/,'') + (asc ? ' ▲' : ' ▼');
-      rows.sort((a, b) => {
-        const av = a.dataset[col] || '';
-        const bv = b.dataset[col] || '';
-        if (isNum) return asc ? parseFloat(av) - parseFloat(bv) : parseFloat(bv) - parseFloat(av);
-        return asc ? av.localeCompare(bv) : bv.localeCompare(av);
+/* ─── Utils — attached directly to window.ParasolUtils, no global declarations */
+window.ParasolUtils = {
+  fmt$(n) {
+    if (n === null || n === undefined || isNaN(n)) return '$0';
+    if (n >= 1000000) return '$' + (n / 1000000).toFixed(1) + 'M';
+    if (n >= 1000)    return '$' + (n / 1000).toFixed(1) + 'K';
+    return '$' + Math.round(n).toLocaleString();
+  },
+  fmtNum(n) {
+    if (!n && n !== 0) return '0';
+    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+    if (n >= 1000)    return (n / 1000).toFixed(1) + 'K';
+    return Math.round(n).toLocaleString();
+  },
+  fmtDate(d) {
+    if (!d) return '—';
+    const dt = new Date(d);
+    if (isNaN(dt)) return '—';
+    return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  },
+  ageDays(dateStr) {
+    if (!dateStr) return '—';
+    const d = Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000);
+    return d + 'd';
+  },
+  escHtml(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  },
+  isNextWeek(dateStr) {
+    if (!dateStr) return false;
+    const now  = new Date();
+    const day  = now.getDay();
+    const diff = day === 0 ? 1 : 8 - day;
+    const mon  = new Date(now); mon.setDate(now.getDate() + diff); mon.setHours(0,0,0,0);
+    const sun  = new Date(mon); sun.setDate(mon.getDate() + 6);   sun.setHours(23,59,59,999);
+    const dt   = new Date(dateStr);
+    return dt >= mon && dt <= sun;
+  },
+  isPast14Days(dateStr) {
+    if (!dateStr) return false;
+    const dt = new Date(dateStr);
+    return dt >= new Date(Date.now() - 14 * 86400000);
+  },
+  isLast7Days(dateStr) {
+    if (!dateStr) return false;
+    const dt = new Date(dateStr);
+    return dt >= new Date(Date.now() - 7 * 86400000);
+  },
+  exportCsv(rows, filename) {
+    if (!rows.length) return;
+    const keys = Object.keys(rows[0]);
+    const lines = [keys.join(','), ...rows.map(r => keys.map(k => JSON.stringify(r[k] ?? '')).join(','))];
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+  },
+  makeSortable(tableEl) {
+    const ths = tableEl.querySelectorAll('th.sortable');
+    ths.forEach(th => {
+      th.addEventListener('click', () => {
+        const col   = th.dataset.col;
+        const isNum = th.dataset.type === 'num';
+        const rows  = Array.from(tableEl.querySelectorAll('tbody tr'));
+        const asc   = th.dataset.asc !== 'true';
+        ths.forEach(t => { delete t.dataset.asc; t.textContent = t.textContent.replace(/ [▲▼]$/, ''); });
+        th.dataset.asc  = asc;
+        th.textContent  = th.textContent + (asc ? ' ▲' : ' ▼');
+        rows.sort((a, b) => {
+          const av = a.dataset[col] || '';
+          const bv = b.dataset[col] || '';
+          if (isNum) return asc ? parseFloat(av) - parseFloat(bv) : parseFloat(bv) - parseFloat(av);
+          return asc ? av.localeCompare(bv) : bv.localeCompare(av);
+        });
+        const tbody = tableEl.querySelector('tbody');
+        rows.forEach(r => tbody.appendChild(r));
       });
-      const tbody = tableEl.querySelector('tbody');
-      rows.forEach(r => tbody.appendChild(r));
     });
-  });
-}
-
-window.ParasolUtils = { fmt$, fmtNum, fmtDate, ageDays, escHtml, isNextWeek, isPast14Days, isLast7Days, exportCsv, makeSortable };
+  },
+};
 
 /* ─── Tab switching ────────────────────────────────────────────────────────── */
 function switchTab(navId, tabId) {
@@ -103,7 +102,7 @@ document.getElementById('md-tabs-nav').addEventListener('click', e => {
   if (!btn) return;
   state.mdActiveTab = btn.dataset.tab;
   switchTab('md-tabs-nav', btn.dataset.tab);
-  if (state.mdData) renderMdTab(btn.dataset.tab, state.mdData);
+  if (state.mdData) window.renderMdTab(btn.dataset.tab, state.mdData);
 });
 
 document.getElementById('duet-tabs-nav').addEventListener('click', e => {
@@ -111,7 +110,7 @@ document.getElementById('duet-tabs-nav').addEventListener('click', e => {
   if (!btn) return;
   state.duetActiveTab = btn.dataset.tab;
   switchTab('duet-tabs-nav', btn.dataset.tab);
-  if (state.duetData) renderDuetTab(btn.dataset.tab, state.duetData);
+  if (state.duetData) window.renderDuetTab(btn.dataset.tab, state.duetData);
 });
 
 /* ─── Client switching ─────────────────────────────────────────────────────── */
@@ -147,7 +146,7 @@ async function loadMessageDesk(force = false) {
     if (!r.ok) throw new Error('HTTP ' + r.status);
     state.mdData = await r.json();
     setUpdated(state.mdData.updated_at);
-    renderMdTab(state.mdActiveTab, state.mdData);
+    window.renderMdTab(state.mdActiveTab, state.mdData);
   } catch (e) {
     console.error('MessageDesk load error:', e);
   } finally { hideLoading(); }
@@ -161,7 +160,7 @@ async function loadDuet(force = false) {
     if (!r.ok) throw new Error('HTTP ' + r.status);
     state.duetData = await r.json();
     setUpdated(state.duetData.updated_at);
-    renderDuetTab(state.duetActiveTab, state.duetData);
+    window.renderDuetTab(state.duetActiveTab, state.duetData);
   } catch (e) {
     console.error('Duet load error:', e);
   } finally { hideLoading(); }
