@@ -5,308 +5,332 @@ const path    = require('path');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
-const API_KEY = process.env.CLOSE_API_KEY || '';
-const PARASOL_PIPELINE_ID = 'pipe_1lXFBvtVQXtRgcjonTFr1Y';
+const CLOSE_API_KEY   = process.env.CLOSE_API_KEY   || '';
+const HUBSPOT_API_KEY = process.env.HUBSPOT_API_KEY || '';
+const CLOSE_BASE      = 'https://api.close.com/api/v1';
+const HUBSPOT_BASE    = 'https://api.hubapi.com';
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ─── In-memory cache + concurrency lock ───────────────────────────────────────
-let _cache        = null;
-let _fetchPromise = null; // prevents duplicate concurrent fetches
+// ─── Simple cache ──────────────────────────────────────────────────────────────
+const CACHE_TTL = 5 * 60 * 1000;
+const cache = {};
+function getCache(key) {
+  const e = cache[key];
+  if (e && Date.now() - e.ts < CACHE_TTL) return e.data;
+  return null;
+}
+function setCache(key, data) { cache[key] = { data, ts: Date.now() }; }
 
-// ─── Auth ──────────────────────────────────────────────────────────────────────
-function authHeaders() {
-  return { Authorization: `Basic ${Buffer.from(API_KEY + ':').toString('base64')}` };
+// ─── Close.io helpers ──────────────────────────────────────────────────────────
+function closeAuth() {
+  return { Authorization: `Basic ${Buffer.from(CLOSE_API_KEY + ':').toString('base64')}` };
 }
 
-// ─── Stage mapping ─────────────────────────────────────────────────────────────
-const STAGE_MAP = {
-  'Champion Confirmed':         'Champion Confirmed',
-  'Active Evaluation':          'Active Evaluation',
-  'Meeting Scheduled':          'Meeting Scheduled',
-  'Closed Won':                 'Closed Won',
-  'Closed Lost - No Showed':    'No Showed',
-  'Closed Lost - No Decision':  'No Decision',
-  'Closed Lost - Timing':       'Timing',
-  'Closed Lost - Mass Texting': 'Mass Texting',
-  'Registration Pending':       'Registration Pending',
-  'Typeform Reg App Submitted': 'Typeform Reg App Submitted',
-  'Website Changes Needed':     'Website Changes Needed',
-  'Account Created':            'Account Created',
-  'MQLs':                       'MQLs',
-  'Registration Approved':      'Registration Approved',
-};
-const ACTIVE_STAGES     = new Set(['Champion Confirmed','Active Evaluation','Meeting Scheduled','MQLs']);
-const ONBOARDING_STAGES = new Set(['Registration Pending','Typeform Reg App Submitted','Website Changes Needed','Account Created','Registration Approved']);
-
-function getCategory(stage) {
-  if (ACTIVE_STAGES.has(stage))     return 'active';
-  if (ONBOARDING_STAGES.has(stage)) return 'onboarding';
-  if (stage === 'Closed Won')       return 'won';
-  return 'lost';
+async function closeFetch(endpoint, params = {}) {
+  const url = new URL(CLOSE_BASE + endpoint);
+  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+  const res = await fetch(url.toString(), { headers: closeAuth(), timeout: 30000 });
+  if (!res.ok) throw new Error(`Close ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  return res.json();
 }
 
-function toMonthly(opp) {
-  if (opp.value !== null && opp.value !== undefined && opp.value !== '') {
-    const dollars = parseFloat(opp.value) / 100;
-    const freq = (opp.value_period || '').toLowerCase();
-    if (freq === 'annual')                          return dollars / 12;
-    if (freq === 'one_time' || freq === 'one-time') return 0;
-    return dollars;
-  }
-  if (opp.value_formatted) {
-    const m = opp.value_formatted.replace(/,/g, '').match(/\$?([\d.]+)/);
-    if (m) {
-      const v = parseFloat(m[1]);
-      const freq = (opp.value_period || '').toLowerCase();
-      if (freq === 'annual')                          return v / 12;
-      if (freq === 'one_time' || freq === 'one-time') return 0;
-      return v;
-    }
-  }
-  return 0;
-}
-
-// ─── Opp custom fields (hardcoded after discovery) ─────────────────────────────
-const DEMO_STATUS_KEY = 'cf_8BtzV3ggENtaiUj0nBV1NZ65v9g9IaN2XglzDk4rHEA';
-const DEMO_DATE_KEY   = 'cf_nRCz1lxTf78cLTtm8QCi2RwWyEdYY6r96JDzwMnMRYa';
-
-// Close.io returns opp custom fields as top-level "custom.cf_xxx" keys
-function extractOppCustom(opp) {
-  const c = { ...(opp.custom || {}) };
-  for (const [k, v] of Object.entries(opp)) {
-    if (k.startsWith('custom.')) c[k.slice('custom.'.length)] = v;
-  }
-  return c;
-}
-
-function getDemoStatus(custom) { return custom[DEMO_STATUS_KEY] || ''; }
-function getDemoDate(custom) {
-  const v = custom[DEMO_DATE_KEY];
-  if (!v) return null;
-  const d = new Date(v);
-  return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0];
-}
-
-function scoreOpp(opp, demoCompleted) {
-  let s = 50;
-  const stage = STAGE_MAP[opp.status_label] || '';
-  if (stage === 'Champion Confirmed')     s += 20;
-  else if (stage === 'Active Evaluation') s += 10;
-  if (demoCompleted) s += 15;
-  const m = toMonthly(opp);
-  if (m >= 200) s += 10; else if (m >= 100) s += 5;
-  return Math.min(s, 99);
-}
-
-// ─── Fetch all Parasol pipeline opportunities (fast — ~5s for ~500 opps) ──────
-async function fetchAllParasolOpps() {
-  const fields = [
-    'id','lead_id','lead_name','status_label',
-    'value','value_period','value_formatted',
-    'date_created','date_updated','custom',
-  ].join(',');
-  const base = `https://api.close.com/api/v1/opportunity/?pipeline_id=${PARASOL_PIPELINE_ID}&_limit=100&_fields=${fields}`;
-
-  let all = [], skip = 0;
+async function closePageAll(endpoint, params = {}) {
+  const results = [];
+  let skip = 0;
   while (true) {
-    const res = await fetch(`${base}&_skip=${skip}`, { headers: authHeaders() });
-    if (!res.ok) throw new Error(`Close API ${res.status}: ${(await res.text()).slice(0,200)}`);
-    const data = await res.json();
-    const rows = data.data || [];
-    all = all.concat(rows);
-    console.log(`Fetched opps: ${all.length}`);
-    if (rows.length < 100) break;
+    const data = await closeFetch(endpoint, { ...params, _limit: 100, _skip: skip });
+    results.push(...(data.data || []));
+    if (!data.has_more) break;
     skip += 100;
   }
-  console.log(`Total Parasol opps: ${all.length}`);
-  return all;
+  return results;
 }
 
-// ─── Process opps into deals ───────────────────────────────────────────────────
-function processOpps(opps) {
-  const deals = [];
-  for (const opp of opps) {
-    const custom       = extractOppCustom(opp);
-    const stage        = STAGE_MAP[opp.status_label] || opp.status_label || 'Unknown';
-    const category     = getCategory(stage);
-    const monthly      = toMonthly(opp);
-    const ageDays      = ACTIVE_STAGES.has(stage)
-      ? Math.floor((Date.now() - new Date(opp.date_created).getTime()) / 86400000) : null;
-    const demoStatus   = getDemoStatus(custom);
-    const demoDate     = getDemoDate(custom);
-    const demoCompleted = demoStatus === 'Completed';
-
-    deals.push({
-      id: opp.id, lead_id: opp.lead_id,
-      company:        opp.lead_name || '',
-      stage, category, monthly_value: monthly, age_days: ageDays,
-      score:          scoreOpp(opp, demoCompleted),
-      a2p_status:     '',
-      pipeline_review:'',
-      demo_completed: demoCompleted,
-      demo_status:    demoStatus,
-      demo_date:      demoDate,
-      date_created:   opp.date_created || '',
-      date_updated:   opp.date_updated || '',
-    });
-  }
-
-  // Log scheduled meetings for debugging
-  const scheduled = deals.filter(d => d.demo_status === 'Scheduled');
-  console.log(`Deals with Demo Status=Scheduled: ${scheduled.length}`);
-  if (scheduled.length) scheduled.slice(0,5).forEach(d =>
-    console.log(`  ${d.company} | ${d.demo_date} | ${d.stage}`)
-  );
-
-  return deals;
+// ─── HubSpot helpers ───────────────────────────────────────────────────────────
+function hsHeaders() {
+  return { Authorization: `Bearer ${HUBSPOT_API_KEY}`, 'Content-Type': 'application/json' };
 }
 
-// ─── Build dashboard payload ───────────────────────────────────────────────────
-function buildDashboard(deals) {
-  const active     = deals.filter(d => d.category === 'active');
-  const onboarding = deals.filter(d => d.category === 'onboarding');
-  const won        = deals.filter(d => d.category === 'won');
-  const lost       = deals.filter(d => d.category === 'lost');
-  const champion   = deals.filter(d => d.stage === 'Champion Confirmed');
-  const sum = arr  => arr.reduce((s,d) => s + d.monthly_value, 0);
-
-  const byStage = {};
-  for (const d of deals) {
-    if (!byStage[d.stage]) byStage[d.stage] = { count:0, mrr:0 };
-    byStage[d.stage].count++; byStage[d.stage].mrr += d.monthly_value;
-  }
-
-  const newByMonth = {};
-  for (const d of deals) {
-    if (!d.date_created) continue;
-    const dt = new Date(d.date_created);
-    if (dt < new Date('2025-09-01')) continue;
-    const key = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`;
-    newByMonth[key] = (newByMonth[key]||0) + 1;
-  }
-
-  // WoW — computed from date_created / date_updated, no external storage needed
-  const DAY = 86400000;
-  const now = Date.now();
-  const thisWeekCutoff = now - 7  * DAY;
-  const lastWeekCutoff = now - 14 * DAY;
-  const inThis = d => d && new Date(d).getTime() >= thisWeekCutoff;
-  const inLast = d => { if (!d) return false; const t = new Date(d).getTime(); return t >= lastWeekCutoff && t < thisWeekCutoff; };
-
-  const changes = {
-    new_this_week:        deals.filter(d => inThis(d.date_created)),
-    new_last_week:        deals.filter(d => inLast(d.date_created)),
-    won_this_week:        deals.filter(d => d.category === 'won'               && inThis(d.date_updated)),
-    won_last_week:        deals.filter(d => d.category === 'won'               && inLast(d.date_updated)),
-    lost_this_week:       deals.filter(d => d.category === 'lost'              && inThis(d.date_updated)),
-    lost_last_week:       deals.filter(d => d.category === 'lost'              && inLast(d.date_updated)),
-    onboarding_this_week: deals.filter(d => d.category === 'onboarding'        && inThis(d.date_updated)),
-    champion_this_week:   deals.filter(d => d.stage    === 'Champion Confirmed' && inThis(d.date_updated)),
-    active_updated:       deals.filter(d => d.category === 'active'            && inThis(d.date_updated)),
-  };
-
-  const kpis = {
-    total:            deals.length,
-    active_count:     active.length,     active_mrr:     sum(active),
-    onboarding_count: onboarding.length, onboarding_mrr: sum(onboarding),
-    won_count:        won.length,        won_mrr:        sum(won),
-    lost_count:       lost.length,
-    champion_count:   champion.length,   champion_mrr:   sum(champion),
-  };
-
-  return {
-    kpis, changes,
-    deals:           deals.sort((a,b) => b.monthly_value - a.monthly_value),
-    by_stage:        byStage,
-    new_by_month:    newByMonth,
-    pipeline_review: [],   // requires lead-level fetch; not available in fast mode
-    updated_at:      new Date().toISOString(),
-  };
+async function hsFetch(path, params = {}) {
+  const url = new URL(HUBSPOT_BASE + path);
+  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+  const res = await fetch(url.toString(), { headers: hsHeaders(), timeout: 30000 });
+  if (!res.ok) throw new Error(`HubSpot ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  return res.json();
 }
 
-// ─── Fetch, process, cache ─────────────────────────────────────────────────────
-async function fetchAndCache() {
-  const opps  = await fetchAllParasolOpps();
-  const deals = processOpps(opps);
-  _cache = buildDashboard(deals);
-  console.log('Data ready —', _cache.kpis.total, 'deals');
-  return _cache;
-}
-
-// Ensures only one concurrent fetch runs; subsequent callers wait for it
-async function ensureData(force = false) {
-  if (force) _cache = null;
-  if (_cache) return _cache;
-  if (!_fetchPromise) {
-    _fetchPromise = fetchAndCache().finally(() => { _fetchPromise = null; });
-  }
-  return _fetchPromise;
-}
-
-// ─── Meetings: filter cached deals ────────────────────────────────────────────
-function getMeetings() {
-  const now    = new Date();
-  const day    = now.getDay();
-  const toMon  = day === 0 ? 1 : 8 - day;
-  const mon    = new Date(now); mon.setDate(now.getDate() + toMon); mon.setHours(0,0,0,0);
-  const sun    = new Date(mon); sun.setDate(mon.getDate() + 6);     sun.setHours(23,59,59,999);
-  const fmt    = d => d.toISOString().split('T')[0];
-  const weekStart = fmt(mon), weekEnd = fmt(sun);
-
-  const deals = (_cache && _cache.deals) || [];
-  const meetings = deals.filter(d =>
-    d.demo_date &&
-    d.demo_status === 'Scheduled' &&
-    d.demo_date >= weekStart &&
-    d.demo_date <= weekEnd
-  ).map(d => ({
-    lead_id: d.lead_id, lead_name: d.company,
-    demo_date: d.demo_date, demo_status: d.demo_status,
-    monthly_value: d.monthly_value, stage: d.stage,
-    note: '',
-  }));
-
-  console.log(`Meetings ${weekStart}–${weekEnd}: ${meetings.length}`);
-  return { meetings, week_start: weekStart, week_end: weekEnd };
-}
-
-// ─── Routes ───────────────────────────────────────────────────────────────────
-app.get('/api/dashboard', async (req, res) => {
-  try {
-    const data = await ensureData(req.query.refresh === '1');
-    res.json({ ...data, cached: _fetchPromise === null });
-  } catch (e) {
-    console.error('Dashboard error:', e.message);
-    res.status(500).json({ error: e.message });
-  }
-});
-
-app.get('/api/meetings', async (req, res) => {
-  try {
-    await ensureData();
-    res.json(getMeetings());
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// Debug: fetch raw opp by ID
-app.get('/api/debug/opp/:id', async (req, res) => {
-  try {
-    const r = await fetch(`https://api.close.com/api/v1/opportunity/${req.params.id}/`, { headers: authHeaders() });
-    if (!r.ok) return res.status(r.status).json({ error: await r.text() });
-    res.json(await r.json());
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// ─── Startup (local dev only) ──────────────────────────────────────────────────
-if (require.main === module) {
-  app.listen(PORT, () => {
-    console.log(`MessageDesk Dashboard → http://localhost:${PORT}`);
-    fetchAndCache().catch(console.error);
+async function hsPost(path, body) {
+  const res = await fetch(HUBSPOT_BASE + path, {
+    method: 'POST', headers: hsHeaders(), body: JSON.stringify(body), timeout: 30000,
   });
+  if (!res.ok) throw new Error(`HubSpot POST ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  return res.json();
+}
+
+// ─── MessageDesk: toMonthly ────────────────────────────────────────────────────
+function mdToMonthly(opp) {
+  const val = parseFloat(opp.value) || 0;
+  const freq = (opp.value_period || '').toLowerCase();
+  if (freq === 'annual') return val / 12;
+  if (freq === 'one_time' || freq === 'one-time') return 0;
+  return val;
+}
+
+function a2pStage(raw) {
+  if (!raw) return 0;
+  const m = raw.match(/^(\d+)\./);
+  return m ? parseInt(m[1]) : 0;
+}
+
+// ─── MessageDesk dashboard ─────────────────────────────────────────────────────
+async function fetchMessageDeskDashboard() {
+  const cached = getCache('messagedesk');
+  if (cached) return cached;
+
+  const [opps, statuses] = await Promise.all([
+    closePageAll('/opportunity/', {
+      _fields: 'id,lead_id,lead_name,status_id,status_label,status_type,value,value_period,date_created,date_updated,date_won,date_lost,user_id,user_name,note,confidence,custom',
+    }),
+    closeFetch('/status/opportunity/'),
+  ]);
+
+  // Build status type map
+  const statusTypeMap = {};
+  (statuses.data || []).forEach(s => { statusTypeMap[s.id] = s.type || 'active'; });
+
+  // Auto-detect A2P custom field (matches /^\d+\.\s+/)
+  let a2pFieldId = null;
+  for (const opp of opps) {
+    const custom = opp.custom || {};
+    for (const [k, v] of Object.entries(custom)) {
+      if (typeof v === 'string' && /^\d+\.\s+/.test(v)) { a2pFieldId = k; break; }
+    }
+    if (a2pFieldId) break;
+  }
+
+  // Classify opps
+  const active = [], won = [], lost = [];
+  for (const opp of opps) {
+    const stype = statusTypeMap[opp.status_id] || opp.status_type || 'active';
+    const monthly = mdToMonthly(opp);
+    const custom = opp.custom || {};
+    const a2pRaw = a2pFieldId ? (custom[a2pFieldId] || '') : '';
+    const deal = {
+      id: opp.id, lead_id: opp.lead_id,
+      company: opp.lead_name || '',
+      status_label: opp.status_label || '',
+      status_id: opp.status_id || '',
+      monthly_value: monthly,
+      owner: opp.user_name || '',
+      a2p_stage: a2pStage(a2pRaw),
+      a2p_label: a2pRaw,
+      note: opp.note || '',
+      date_created: opp.date_created || '',
+      date_updated: opp.date_updated || '',
+      date_won: opp.date_won || null,
+      date_lost: opp.date_lost || null,
+      confidence: opp.confidence || 0,
+      age_days: Math.floor((Date.now() - new Date(opp.date_created).getTime()) / 86400000),
+      status_type: stype,
+    };
+    if (stype === 'won') won.push(deal);
+    else if (stype === 'lost') lost.push(deal);
+    else active.push(deal);
+  }
+
+  // Pipeline by status
+  const pipelineByStatus = {};
+  for (const d of active) {
+    if (!pipelineByStatus[d.status_label]) pipelineByStatus[d.status_label] = { count: 0, mrr: 0 };
+    pipelineByStatus[d.status_label].count++;
+    pipelineByStatus[d.status_label].mrr += d.monthly_value;
+  }
+
+  // MRR by month (last 12 months)
+  const mrrByMonth = {};
+  const now = new Date();
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    mrrByMonth[`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`] = 0;
+  }
+  for (const d of won) {
+    if (!d.date_won) continue;
+    const dt = new Date(d.date_won);
+    const key = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`;
+    if (key in mrrByMonth) mrrByMonth[key] += d.monthly_value;
+  }
+
+  // A2P breakdown
+  const a2pBreakdown = {};
+  for (const d of active) {
+    const k = d.a2p_stage || 0;
+    if (!a2pBreakdown[k]) a2pBreakdown[k] = { count: 0, mrr: 0, label: d.a2p_label || `Stage ${k}` };
+    a2pBreakdown[k].count++;
+    a2pBreakdown[k].mrr += d.monthly_value;
+  }
+
+  const sumMrr = arr => arr.reduce((s, d) => s + d.monthly_value, 0);
+  const kpis = {
+    pipeline_mrr: sumMrr(active),
+    active_deals: active.length,
+    won_mrr: sumMrr(won),
+    win_rate: (active.length + won.length + lost.length) > 0
+      ? Math.round(won.length / (won.length + lost.length) * 100) || 0
+      : 0,
+    total_deals: opps.length,
+  };
+
+  const result = {
+    kpis,
+    active_opportunities: active,
+    won_opportunities: won,
+    lost_opportunities: lost,
+    pipeline_by_status: pipelineByStatus,
+    mrr_by_month: mrrByMonth,
+    a2p_breakdown: a2pBreakdown,
+    field_ids: { a2p: a2pFieldId },
+    updated_at: new Date().toISOString(),
+  };
+
+  setCache('messagedesk', result);
+  return result;
+}
+
+// ─── Duet stage/owner maps ─────────────────────────────────────────────────────
+const DUET_STAGE_MAP = {
+  '3446819577': 'New / Not Yet Contacted',
+  '3446820538': 'Attempting Contact',
+  '3446820539': 'Parasol Engaged',
+  '3467751100': 'Meeting Booked',
+  '3446820540': 'Meeting Held',
+  '3467565765': 'Interest Confirmed',
+  '3477604030': 'Diagnostic',
+  '3446820542': 'LOI Sent',
+  '3446820543': 'Enrolled / Won',
+  '3446820544': 'Not Interested / Lost',
+  '3446820545': 'Come Back To',
+  '3446820546': 'Not Relevant / DQ',
+};
+const DUET_OWNER_MAP = {
+  '163553901': 'Jonathan Goldberg',
+  '163553854': 'Florencia Scopp',
+  '83189293':  'Joe',
+  '163575365': 'Jonathan Goldberg',
+};
+const ownerCache = {};
+
+async function resolveOwner(id) {
+  if (!id) return 'Unknown';
+  if (DUET_OWNER_MAP[id]) return DUET_OWNER_MAP[id];
+  if (ownerCache[id]) return ownerCache[id];
+  try {
+    const data = await hsFetch(`/crm/v3/owners/${id}`);
+    const name = [data.firstName, data.lastName].filter(Boolean).join(' ') || data.email || id;
+    ownerCache[id] = name;
+    return name;
+  } catch { ownerCache[id] = id; return id; }
+}
+
+const DUET_PIPELINE_ID = '2168635108';
+const DUET_PROPS = [
+  'dealname','dealstage','pipeline','hubspot_owner_id','closedate',
+  'hs_lastmodifieddate','attribution_2024_lives','gross_savings_2024_deal',
+  'outreach_attempt_count','last_outreach_date','meeting_date','loi_sent_date',
+  'loi_signed_date','enrollment_date','enrollment_deadline','champion_name',
+  'champion_role','lost_reason','deal_source','duet_engaged_owner',
+  'secondary_owner','meeting_set','np_intro_made',
+].join(',');
+
+async function fetchDuetDeals() {
+  const cached = getCache('duet');
+  if (cached) return cached;
+
+  const deals = [];
+  let after = null;
+  while (true) {
+    const body = {
+      filterGroups: [{ filters: [{ propertyName: 'pipeline', operator: 'EQ', value: DUET_PIPELINE_ID }] }],
+      properties: DUET_PROPS.split(','),
+      limit: 100,
+    };
+    if (after) body.after = after;
+    const data = await hsPost('/crm/v3/objects/deals/search', body);
+    deals.push(...(data.results || []));
+    if (data.paging && data.paging.next && data.paging.next.after) {
+      after = data.paging.next.after;
+    } else break;
+  }
+
+  // Resolve owners in parallel (dedupe)
+  const ownerIds = [...new Set(deals.map(d => d.properties?.hubspot_owner_id).filter(Boolean))];
+  await Promise.all(ownerIds.map(id => resolveOwner(id)));
+
+  const mapped = deals.map(d => {
+    const p = d.properties || {};
+    const stageId = p.dealstage || '';
+    const ownerId = p.hubspot_owner_id || '';
+    return {
+      id: d.id,
+      dealname: p.dealname || '',
+      stage_id: stageId,
+      stage: DUET_STAGE_MAP[stageId] || stageId,
+      owner: DUET_OWNER_MAP[ownerId] || ownerCache[ownerId] || ownerId,
+      owner_id: ownerId,
+      closedate: p.closedate || null,
+      last_modified: p.hs_lastmodifieddate || null,
+      lives: parseFloat(p.attribution_2024_lives) || 0,
+      gross_savings: parseFloat(p.gross_savings_2024_deal) || 0,
+      outreach_attempts: parseInt(p.outreach_attempt_count) || 0,
+      last_outreach: p.last_outreach_date || null,
+      meeting_date: p.meeting_date || null,
+      loi_sent_date: p.loi_sent_date || null,
+      loi_signed_date: p.loi_signed_date || null,
+      enrollment_date: p.enrollment_date || null,
+      enrollment_deadline: p.enrollment_deadline || null,
+      champion_name: p.champion_name || '',
+      champion_role: p.champion_role || '',
+      lost_reason: p.lost_reason || '',
+      deal_source: p.deal_source || '',
+      meeting_set: p.meeting_set || '',
+      np_intro_made: p.np_intro_made || '',
+    };
+  });
+
+  const result = { deals: mapped, updated_at: new Date().toISOString() };
+  setCache('duet', result);
+  return result;
+}
+
+// ─── Routes ────────────────────────────────────────────────────────────────────
+app.get('/api/messagedesk/dashboard', async (req, res) => {
+  try {
+    if (req.query.refresh === '1') delete cache['messagedesk'];
+    res.json(await fetchMessageDeskDashboard());
+  } catch (e) {
+    console.error('MessageDesk error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/duet/deals', async (req, res) => {
+  try {
+    if (req.query.refresh === '1') delete cache['duet'];
+    res.json(await fetchDuetDeals());
+  } catch (e) {
+    console.error('Duet error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Catch-all: serve index.html
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+if (require.main === module) {
+  app.listen(PORT, () => console.log(`Parasol Hub → http://localhost:${PORT}`));
 }
 
 module.exports = app;
