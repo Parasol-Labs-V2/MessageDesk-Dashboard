@@ -10,8 +10,6 @@ function renderDuetTab(tabId, data) {
   }
 }
 
-const _du = window.ParasolUtils;
-
 const DUET_ACTIVE_STAGES = new Set([
   'New / Not Yet Contacted','Attempting Contact','Parasol Engaged',
   'Meeting Booked','Meeting Held','Interest Confirmed','Diagnostic','LOI Sent',
@@ -31,14 +29,14 @@ function fmtLives(n) {
 }
 function fmtSavings(n) {
   if (!n) return '—';
-  return _du.fmt$(n);
+  return window.ParasolUtils.fmt$(n);
 }
 
 /* ─── Tab 1: Active Pipeline ───────────────────────────────────────────────── */
 function renderDuetTab1(data) {
   const el    = document.getElementById('duet-tab1');
   const deals = (data.deals || []).filter(d => DUET_ACTIVE_STAGES.has(d.stage));
-  const { fmt$, fmtDate, escHtml } = _du;
+  const { fmt$, fmtDate, escHtml } = window.ParasolUtils;
 
   const totalLives   = deals.reduce((s,d) => s + d.lives, 0);
   const totalSavings = deals.reduce((s,d) => s + d.gross_savings, 0);
@@ -113,7 +111,7 @@ function renderDuetTab1(data) {
 function renderDuetTab2(data) {
   const el    = document.getElementById('duet-tab2');
   const deals = data.deals || [];
-  const { escHtml } = _du;
+  const { escHtml } = window.ParasolUtils;
 
   const allStages = [
     'New / Not Yet Contacted','Attempting Contact','Parasol Engaged',
@@ -182,7 +180,7 @@ function renderDuetTab2(data) {
 function renderDuetTab3(data) {
   const el    = document.getElementById('duet-tab3');
   const deals = data.deals || [];
-  const { isNextWeek, isPast14Days, fmtDate, escHtml } = _du;
+  const { isNextWeek, isPast14Days, fmtDate, escHtml } = window.ParasolUtils;
 
   const upcoming = deals.filter(d => isNextWeek(d.meeting_date))
                         .sort((a,b) => new Date(a.meeting_date)-new Date(b.meeting_date));

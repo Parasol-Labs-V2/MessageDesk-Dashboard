@@ -10,10 +10,9 @@ function renderMdTab(tabId, data) {
   }
 }
 
-const { fmt$, fmtDate, ageDays, escHtml, makeSortable } = window.ParasolUtils;
-
 /* ─── Tab 1: Active Pipeline ───────────────────────────────────────────────── */
 function renderMdTab1(data) {
+  const { fmt$, escHtml } = window.ParasolUtils;
   const el  = document.getElementById('md-tab1');
   const k   = data.kpis;
   const active = data.active_opportunities || [];
@@ -92,6 +91,7 @@ window.toggleCard = function(id) {
 
 /* ─── Tab 2: Funnel Overview ───────────────────────────────────────────────── */
 function renderMdTab2(data) {
+  const { fmt$, escHtml } = window.ParasolUtils;
   const el  = document.getElementById('md-tab2');
   const pbs = data.pipeline_by_status || {};
   const won = data.won_opportunities  || [];
@@ -154,9 +154,9 @@ function renderMdTab2(data) {
 
 /* ─── Tab 3: Meetings Next Week ────────────────────────────────────────────── */
 function renderMdTab3(data) {
+  const { fmt$, fmtDate, escHtml, isNextWeek } = window.ParasolUtils;
   const el     = document.getElementById('md-tab3');
   const active = data.active_opportunities || [];
-  const { isNextWeek } = window.ParasolUtils;
 
   const upcoming = active.filter(d => {
     const updated = d.date_updated;

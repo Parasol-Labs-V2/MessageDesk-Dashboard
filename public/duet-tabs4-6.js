@@ -1,5 +1,4 @@
 /* ─── Duet Tabs 4–6 ────────────────────────────────────────────────────────── */
-const _duu = window.ParasolUtils;
 
 const DUET_MID_FUNNEL = ['Parasol Engaged','Meeting Booked','Meeting Held','Interest Confirmed','Diagnostic','LOI Sent'];
 
@@ -7,7 +6,7 @@ const DUET_MID_FUNNEL = ['Parasol Engaged','Meeting Booked','Meeting Held','Inte
 function renderDuetTab4(data) {
   const el    = document.getElementById('duet-tab4');
   const deals = data.deals || [];
-  const { isLast7Days, fmtDate, escHtml } = _duu;
+  const { isLast7Days, fmtDate, escHtml } = window.ParasolUtils;
 
   const modified = deals.filter(d => isLast7Days(d.last_modified));
   const newDeals = modified.filter(d => isLast7Days(d.last_modified) && d.stage === 'New / Not Yet Contacted');
@@ -56,7 +55,7 @@ function renderDuetTab4(data) {
 function renderDuetTab5(data) {
   const el    = document.getElementById('duet-tab5');
   const deals = (data.deals || []).filter(d => DUET_MID_FUNNEL.includes(d.stage));
-  const { fmtDate, escHtml, makeSortable, exportCsv } = _duu;
+  const { fmtDate, escHtml, makeSortable, exportCsv } = window.ParasolUtils;
 
   const owners   = [...new Set(deals.map(d => d.owner).filter(Boolean))].sort();
   const ownerOpts = ['<option value="">All Owners</option>',
@@ -143,7 +142,7 @@ function renderDuetTab5(data) {
 function renderDuetTab6(data) {
   const el    = document.getElementById('duet-tab6');
   const deals = data.deals || [];
-  const { fmtDate, escHtml, exportCsv, makeSortable } = _duu;
+  const { fmtDate, escHtml, exportCsv, makeSortable } = window.ParasolUtils;
 
   const allStages = [...new Set(deals.map(d => d.stage))].sort();
   const owners    = [...new Set(deals.map(d => d.owner).filter(Boolean))].sort();
@@ -222,6 +221,3 @@ function renderDuetTab6(data) {
   });
 }
 
-// Helper functions shared from duet-tabs1-3
-function fmtLives(n)   { return !n ? '—' : Number(n).toLocaleString(); }
-function fmtSavings(n) { return !n ? '—' : _duu.fmt$(n); }

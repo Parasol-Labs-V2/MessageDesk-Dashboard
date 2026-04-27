@@ -1,13 +1,12 @@
 /* ─── MessageDesk Tabs 4–6 ─────────────────────────────────────────────────── */
-const _mu = window.ParasolUtils;
 
 /* ─── Tab 4: WoW Changes ───────────────────────────────────────────────────── */
 function renderMdTab4(data) {
+  const { isLast7Days, fmt$, fmtDate, escHtml } = window.ParasolUtils;
   const el     = document.getElementById('md-tab4');
   const active = data.active_opportunities || [];
   const won    = data.won_opportunities    || [];
   const lost   = data.lost_opportunities   || [];
-  const { isLast7Days, fmt$, fmtDate, escHtml } = _mu;
 
   const recentActive = active.filter(d => isLast7Days(d.date_updated));
   const recentWon    = won.filter(d => isLast7Days(d.date_updated));
@@ -86,9 +85,9 @@ function renderMdTab4(data) {
 
 /* ─── Tab 5: 2K+ Pipeline Review ──────────────────────────────────────────── */
 function renderMdTab5(data) {
+  const { fmt$, fmtDate, escHtml, makeSortable } = window.ParasolUtils;
   const el     = document.getElementById('md-tab5');
   const active = data.active_opportunities || [];
-  const { fmt$, fmtDate, escHtml, makeSortable } = _mu;
 
   const big = active.filter(d => d.monthly_value >= 2000)
                     .sort((a,b) => b.monthly_value - a.monthly_value);
@@ -162,11 +161,11 @@ function renderMdTab5(data) {
 
 /* ─── Tab 6: All Deals ─────────────────────────────────────────────────────── */
 function renderMdTab6(data) {
+  const { fmt$, fmtDate, escHtml, exportCsv, makeSortable } = window.ParasolUtils;
   const el     = document.getElementById('md-tab6');
   const active = data.active_opportunities || [];
   const won    = data.won_opportunities    || [];
   const lost   = data.lost_opportunities   || [];
-  const { fmt$, fmtDate, escHtml, exportCsv, makeSortable } = _mu;
 
   const all = [
     ...active.map(d => ({ ...d, _type: 'active' })),
