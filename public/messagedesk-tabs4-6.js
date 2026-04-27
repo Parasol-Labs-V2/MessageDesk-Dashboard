@@ -1,8 +1,11 @@
 /* ─── MessageDesk Tabs 4–6 ─────────────────────────────────────────────────── */
 
 /* ─── Tab 4: WoW Changes ───────────────────────────────────────────────────── */
-function renderMdTab4(data) {
-  const { isLast7Days, fmt$, fmtDate, escHtml } = window.ParasolUtils;
+window.renderMdTab4 = function renderMdTab4(data) {
+  const isLast7Days = window.ParasolUtils.isLast7Days;
+  const fmt$        = window.ParasolUtils.fmt$;
+  const fmtDate     = window.ParasolUtils.fmtDate;
+  const escHtml     = window.ParasolUtils.escHtml;
   const el     = document.getElementById('md-tab4');
   const active = data.active_opportunities || [];
   const won    = data.won_opportunities    || [];
@@ -84,8 +87,11 @@ function renderMdTab4(data) {
 }
 
 /* ─── Tab 5: 2K+ Pipeline Review ──────────────────────────────────────────── */
-function renderMdTab5(data) {
-  const { fmt$, fmtDate, escHtml, makeSortable } = window.ParasolUtils;
+window.renderMdTab5 = function renderMdTab5(data) {
+  const fmt$        = window.ParasolUtils.fmt$;
+  const fmtDate     = window.ParasolUtils.fmtDate;
+  const escHtml     = window.ParasolUtils.escHtml;
+  const makeSortable = window.ParasolUtils.makeSortable;
   const el     = document.getElementById('md-tab5');
   const active = data.active_opportunities || [];
 
@@ -160,8 +166,12 @@ function renderMdTab5(data) {
 }
 
 /* ─── Tab 6: All Deals ─────────────────────────────────────────────────────── */
-function renderMdTab6(data) {
-  const { fmt$, fmtDate, escHtml, exportCsv, makeSortable } = window.ParasolUtils;
+window.renderMdTab6 = function renderMdTab6(data) {
+  const fmt$         = window.ParasolUtils.fmt$;
+  const fmtDate      = window.ParasolUtils.fmtDate;
+  const escHtml      = window.ParasolUtils.escHtml;
+  const exportCsv    = window.ParasolUtils.exportCsv;
+  const makeSortable = window.ParasolUtils.makeSortable;
   const el     = document.getElementById('md-tab6');
   const active = data.active_opportunities || [];
   const won    = data.won_opportunities    || [];
