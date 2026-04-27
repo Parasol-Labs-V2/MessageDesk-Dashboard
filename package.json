@@ -1,7 +1,7 @@
 {
-  "name": "messagedesk-dashboard",
-  "version": "2.0.0",
-  "description": "MessageDesk Sales Intelligence Dashboard",
+  "name": "duet-dashboard",
+  "version": "1.0.0",
+  "description": "Duet ACO Pipeline Dashboard — Lives Tracker",
   "main": "server.js",
   "scripts": { "start": "node server.js" },
   "dependencies": {
