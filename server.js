@@ -349,8 +349,9 @@ async function getMeetings() {
 
   const now    = new Date();
   const day    = now.getDay();
-  const toMon  = day === 0 ? 1 : 8 - day;
-  const mon    = new Date(now); mon.setDate(now.getDate() + toMon); mon.setHours(0,0,0,0);
+  // Current week's Monday (not next week's): Mon=0 days back, Tue=1, …, Sun=6
+  const daysFromMon = day === 0 ? 6 : day - 1;
+  const mon    = new Date(now); mon.setDate(now.getDate() - daysFromMon); mon.setHours(0,0,0,0);
   const sun    = new Date(mon); sun.setDate(mon.getDate() + 6);     sun.setHours(23,59,59,999);
   const fmt    = d => d.toISOString().split('T')[0];
   const weekStart = fmt(mon), weekEnd = fmt(sun);
