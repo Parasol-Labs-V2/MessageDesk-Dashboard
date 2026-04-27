@@ -69,6 +69,10 @@ async function hsPost(path, body) {
   return res.json();
 }
 
+// ─── MessageDesk constants ─────────────────────────────────────────────────────
+const MD_PIPELINE_ID = 'pipe_1lXFBvtVQXtRgcjonTFr1Y';
+const MD_OPP_FIELDS  = 'id,lead_id,lead_name,status_label,status_type,value,value_period,value_formatted,date_created,date_updated,date_won,date_lost,user_name,note,custom';
+
 // ─── MessageDesk: toMonthly ────────────────────────────────────────────────────
 function mdToMonthly(opp) {
   const val = parseFloat(opp.value) || 0;
@@ -89,58 +93,74 @@ async function fetchMessageDeskDashboard() {
   const cached = getCache('messagedesk');
   if (cached) return cached;
 
-  const [opps, statuses] = await Promise.all([
-    closePageAll('/opportunity/', {
-      _fields: 'id,lead_id,lead_name,status_id,status_label,status_type,value,value_period,date_created,date_updated,date_won,date_lost,user_id,user_name,note,confidence,custom',
-    }),
-    closeFetch('/status/opportunity/'),
-  ]);
-
-  // Build status type map
-  const statusTypeMap = {};
-  (statuses.data || []).forEach(s => { statusTypeMap[s.id] = s.type || 'active'; });
-
-  // Auto-detect A2P custom field (matches /^\d+\.\s+/)
-  let a2pFieldId = null;
-  for (const opp of opps) {
-    const custom = opp.custom || {};
-    for (const [k, v] of Object.entries(custom)) {
-      if (typeof v === 'string' && /^\d+\.\s+/.test(v)) { a2pFieldId = k; break; }
-    }
-    if (a2pFieldId) break;
+  // 1. Fetch all opportunities in the Parasol pipeline only.
+  //    Paginate with _skip; stop when a page returns fewer than 100 rows.
+  const opps = [];
+  let skip = 0;
+  while (true) {
+    const data = await closeFetch('/opportunity/', {
+      pipeline_id: MD_PIPELINE_ID,
+      _fields:     MD_OPP_FIELDS,
+      _limit:      100,
+      _skip:       skip,
+    });
+    const rows = data.data || [];
+    opps.push(...rows);
+    if (rows.length < 100) break;
+    skip += 100;
   }
 
-  // Classify opps
+  // 2. Fetch lead-level custom fields for each unique lead_id (batches of 10).
+  const leadIds = [...new Set(opps.map(o => o.lead_id).filter(Boolean))];
+  const leadCustomMap = {};
+  for (let i = 0; i < leadIds.length; i += 10) {
+    const batch = leadIds.slice(i, i + 10);
+    const results = await Promise.all(
+      batch.map(id =>
+        closeFetch(`/lead/${id}/`, { _fields: 'id,custom' })
+          .then(d => ({ id, custom: d.custom || {} }))
+          .catch(() => ({ id, custom: {} }))
+      )
+    );
+    for (const r of results) leadCustomMap[r.id] = r.custom;
+  }
+
+  // 3. Build deal objects and classify active / won / lost.
+  //    Opp-level custom fields come back as dotted top-level keys: opp["custom.Foo"].
   const active = [], won = [], lost = [];
   for (const opp of opps) {
-    const stype = statusTypeMap[opp.status_id] || opp.status_type || 'active';
+    const leadCustom    = leadCustomMap[opp.lead_id] || {};
+    const a2pRaw        = leadCustom['A2P 10DLC Registration Status'] || '';
+    const pipelineReview = leadCustom['Pipeline Review'] || '';
+
     const monthly = mdToMonthly(opp);
-    const custom = opp.custom || {};
-    const a2pRaw = a2pFieldId ? (custom[a2pFieldId] || '') : '';
+    const stype   = opp.status_type || 'active'; // 'active' | 'won' | 'lost'
+
     const deal = {
-      id: opp.id, lead_id: opp.lead_id,
-      company: opp.lead_name || '',
-      status_label: opp.status_label || '',
-      status_id: opp.status_id || '',
-      monthly_value: monthly,
-      owner: opp.user_name || '',
-      a2p_stage: a2pStage(a2pRaw),
-      a2p_label: a2pRaw,
-      note: opp.note || '',
-      date_created: opp.date_created || '',
-      date_updated: opp.date_updated || '',
-      date_won: opp.date_won || null,
-      date_lost: opp.date_lost || null,
-      confidence: opp.confidence || 0,
-      age_days: Math.floor((Date.now() - new Date(opp.date_created).getTime()) / 86400000),
-      status_type: stype,
+      id:               opp.id,
+      lead_id:          opp.lead_id,
+      company:          opp.lead_name || '',
+      status_label:     opp.status_label || '',
+      monthly_value:    monthly,
+      owner:            opp.user_name || '',
+      a2p_stage:        a2pStage(a2pRaw),
+      a2p_label:        a2pRaw,
+      note:             opp.note || '',
+      pipeline_review:  pipelineReview,
+      date_created:     opp.date_created  || '',
+      date_updated:     opp.date_updated  || '',
+      date_won:         opp.date_won      || null,
+      date_lost:        opp.date_lost     || null,
+      age_days:         Math.floor((Date.now() - new Date(opp.date_created).getTime()) / 86400000),
+      status_type:      stype,
     };
-    if (stype === 'won') won.push(deal);
+
+    if (stype === 'won')       won.push(deal);
     else if (stype === 'lost') lost.push(deal);
-    else active.push(deal);
+    else                       active.push(deal);
   }
 
-  // Pipeline by status
+  // 4. Pipeline by status (active only)
   const pipelineByStatus = {};
   for (const d of active) {
     if (!pipelineByStatus[d.status_label]) pipelineByStatus[d.status_label] = { count: 0, mrr: 0 };
@@ -148,7 +168,7 @@ async function fetchMessageDeskDashboard() {
     pipelineByStatus[d.status_label].mrr += d.monthly_value;
   }
 
-  // MRR by month (last 12 months)
+  // 5. MRR by month — last 12 months of won deals
   const mrrByMonth = {};
   const now = new Date();
   for (let i = 11; i >= 0; i--) {
@@ -157,12 +177,12 @@ async function fetchMessageDeskDashboard() {
   }
   for (const d of won) {
     if (!d.date_won) continue;
-    const dt = new Date(d.date_won);
+    const dt  = new Date(d.date_won);
     const key = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`;
     if (key in mrrByMonth) mrrByMonth[key] += d.monthly_value;
   }
 
-  // A2P breakdown
+  // 6. A2P breakdown
   const a2pBreakdown = {};
   for (const d of active) {
     const k = d.a2p_stage || 0;
@@ -175,23 +195,22 @@ async function fetchMessageDeskDashboard() {
   const kpis = {
     pipeline_mrr: sumMrr(active),
     active_deals: active.length,
-    won_mrr: sumMrr(won),
-    win_rate: (active.length + won.length + lost.length) > 0
-      ? Math.round(won.length / (won.length + lost.length) * 100) || 0
+    won_mrr:      sumMrr(won),
+    win_rate:     (won.length + lost.length) > 0
+      ? Math.round(won.length / (won.length + lost.length) * 100)
       : 0,
-    total_deals: opps.length,
+    total_deals:  opps.length,
   };
 
   const result = {
     kpis,
     active_opportunities: active,
-    won_opportunities: won,
-    lost_opportunities: lost,
-    pipeline_by_status: pipelineByStatus,
-    mrr_by_month: mrrByMonth,
-    a2p_breakdown: a2pBreakdown,
-    field_ids: { a2p: a2pFieldId },
-    updated_at: new Date().toISOString(),
+    won_opportunities:    won,
+    lost_opportunities:   lost,
+    pipeline_by_status:   pipelineByStatus,
+    mrr_by_month:         mrrByMonth,
+    a2p_breakdown:        a2pBreakdown,
+    updated_at:           new Date().toISOString(),
   };
 
   setCache('messagedesk', result);

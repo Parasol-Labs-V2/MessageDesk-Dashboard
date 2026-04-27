@@ -105,7 +105,7 @@ function renderMdTab5(data) {
       <td>${escHtml(d.status_label)}</td>
       <td>${d.a2p_stage ? 'Stage ' + d.a2p_stage : '—'}</td>
       <td>${d.age_days}d</td>
-      <td style="max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(d.note)}</td>
+      <td style="max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(d.pipeline_review || d.note)}</td>
     </tr>`).join('');
   }
 
@@ -128,7 +128,7 @@ function renderMdTab5(data) {
             <th class="sortable" data-col="stage">Stage</th>
             <th>A2P Stage</th>
             <th class="sortable num" data-col="age" data-type="num">Age</th>
-            <th>Note</th>
+            <th>Pipeline Review</th>
           </tr></thead>
           <tbody id="md-tab5-tbody">${buildRows(big)}</tbody>
         </table>
