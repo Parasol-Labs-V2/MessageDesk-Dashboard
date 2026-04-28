@@ -168,7 +168,7 @@ function renderFunnel() {
       </div>`;
   }).join('');
 
-  $('panel-2').innerHTML = `
+  $('panel-1').innerHTML = `
     <div class="kpi-row">
       <div class="kpi-card blue">
         <div class="kpi-label">Prospect Lives</div>
@@ -254,7 +254,7 @@ function renderFunnel() {
 // ══════════════════════════════════════════════════════════════════════════════
 
 async function renderMeetings() {
-  $('panel-3').innerHTML = `<div class="loading-wrap"><div class="spinner"></div><span class="loading-text">Loading meetings from HubSpot…</span></div>`;
+  $('panel-2').innerHTML = `<div class="loading-wrap"><div class="spinner"></div><span class="loading-text">Loading meetings from HubSpot…</span></div>`;
 
   let apiData;
   try {
@@ -262,7 +262,7 @@ async function renderMeetings() {
     if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `HTTP ${res.status}`); }
     apiData = await res.json();
   } catch (e) {
-    $('panel-3').innerHTML = `<div class="error-box">⚠ Could not load meetings: ${esc(e.message)}</div>`;
+    $('panel-2').innerHTML = `<div class="error-box">⚠ Could not load meetings: ${esc(e.message)}</div>`;
     return;
   }
 
@@ -309,7 +309,7 @@ async function renderMeetings() {
   // Also show deal-level meeting_date as a fallback supplemental section
   const dealMeetings = (_data && _data.deals || []).filter(d => d.meetingDate);
 
-  $('panel-3').innerHTML = `
+  $('panel-2').innerHTML = `
     <div class="section-header">
       <h2 class="section-title">Meetings — Next 7 Days</h2>
       <span class="badge">${upcoming.length}</span>

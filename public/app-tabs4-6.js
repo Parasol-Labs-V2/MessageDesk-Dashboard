@@ -54,7 +54,7 @@ function renderWoW() {
 
   const sortByLives = arr => [...arr].sort((a, b) => b.lives - a.lives);
 
-  $('panel-4').innerHTML = `
+  $('panel-3').innerHTML = `
     <div class="kpi-row">
       <div class="kpi-card blue">
         <div class="kpi-label">Modified This Week</div>
@@ -142,7 +142,7 @@ function renderPipelineReview() {
 
   const th = (lbl, col) => sortTh(lbl, col, _prSort, 'sortPR');
 
-  $('panel-5').innerHTML = `
+  $('panel-4').innerHTML = `
     <div class="filter-bar">
       <label class="filter-label">Owner:</label>
       <select class="filter-select" onchange="setPROwner(this.value)">
@@ -192,7 +192,7 @@ function setPROwner(val) {
 // ══════════════════════════════════════════════════════════════════════════════
 
 async function renderTeamPerformance() {
-  $('panel-1').innerHTML = `<div class="loading-wrap"><div class="spinner"></div><span class="loading-text">Loading team performance…</span></div>`;
+  $('panel-5').innerHTML = `<div class="loading-wrap"><div class="spinner"></div><span class="loading-text">Loading team performance…</span></div>`;
 
   let data;
   try {
@@ -200,7 +200,7 @@ async function renderTeamPerformance() {
     if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `HTTP ${res.status}`); }
     data = await res.json();
   } catch (e) {
-    $('panel-1').innerHTML = `<div class="error-box">⚠ Could not load team performance: ${esc(e.message)}</div>`;
+    $('panel-5').innerHTML = `<div class="error-box">⚠ Could not load team performance: ${esc(e.message)}</div>`;
     return;
   }
 
@@ -252,7 +252,7 @@ async function renderTeamPerformance() {
     </tr>`;
   }).join('') || `<tr><td colspan="6" style="padding:12px 16px;color:var(--gray)">No accounts currently need attention.</td></tr>`;
 
-  $('panel-1').innerHTML = `
+  $('panel-5').innerHTML = `
     <div class="kpi-row">
       <div class="kpi-card blue">
         <div class="kpi-label">Active Owners</div>

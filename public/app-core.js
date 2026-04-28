@@ -113,11 +113,11 @@ function switchTab(idx) {
 
 function dispatchRender(idx) {
   if (idx === 0) renderActivePipeline();
-  if (idx === 1) renderTeamPerformance();
-  if (idx === 2) renderFunnel();
-  if (idx === 3) renderMeetings();
-  if (idx === 4) renderWoW();
-  if (idx === 5) renderPipelineReview();
+  if (idx === 1) renderFunnel();
+  if (idx === 2) renderMeetings();
+  if (idx === 3) renderWoW();
+  if (idx === 4) renderPipelineReview();
+  if (idx === 5) renderTeamPerformance();
   if (idx === 6) renderAllDeals();
 }
 
