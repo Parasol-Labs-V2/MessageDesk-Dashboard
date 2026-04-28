@@ -250,79 +250,97 @@ function renderFunnel() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// TAB 3 — Meetings Next Week
+// TAB 3 — Meetings Next Week  (fetches /api/meetings from HubSpot engagements)
 // ══════════════════════════════════════════════════════════════════════════════
 
-function renderMeetings() {
-  const deals = _data.deals;
-  const now   = new Date(); now.setHours(0, 0, 0, 0);
-  const next7 = new Date(now); next7.setDate(now.getDate() + 7);
-  const past14 = new Date(now); past14.setDate(now.getDate() - 14);
+async function renderMeetings() {
+  $('panel-2').innerHTML = `<div class="loading-wrap"><div class="spinner"></div><span class="loading-text">Loading meetings from HubSpot…</span></div>`;
 
-  function inRange(ds, from, to) {
-    if (!ds) return false;
-    const d = new Date(ds.includes('T') ? ds : ds + 'T12:00:00');
-    return d >= from && d < to;
+  let apiData;
+  try {
+    const res = await fetch('/api/meetings');
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `HTTP ${res.status}`); }
+    apiData = await res.json();
+  } catch (e) {
+    $('panel-2').innerHTML = `<div class="error-box">⚠ Could not load meetings: ${esc(e.message)}</div>`;
+    return;
   }
 
-  const upcoming = deals
-    .filter(d => inRange(d.meetingDate, now, next7))
-    .sort((a, b) => (a.meetingDate || '').localeCompare(b.meetingDate || ''));
-
-  const recent = deals
-    .filter(d => inRange(d.meetingDate, past14, now))
-    .sort((a, b) => (b.meetingDate || '').localeCompare(a.meetingDate || ''));
+  const upcoming = apiData.upcoming || [];
+  const recent   = apiData.recent   || [];
 
   const WEEKDAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   const MONTHS   = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-  function meetingRow(d) {
-    const dt     = d.meetingDate ? new Date(d.meetingDate + 'T12:00:00') : null;
-    const dayStr = dt ? `${WEEKDAYS[dt.getDay()]}, ${MONTHS[dt.getMonth()]} ${dt.getDate()}` : '—';
+  function fmtMsDate(ms) {
+    if (!ms) return '—';
+    const d = new Date(ms);
+    return `${WEEKDAYS[d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()}`;
+  }
+
+  function fmtMsTime(ms) {
+    if (!ms) return '';
+    return new Date(ms).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  }
+
+  function engRow(m) {
     return `<tr>
-      <td class="col-name">${esc(d.dealname)}</td>
-      <td>${dayStr}</td>
-      <td>${esc(d.owner)}</td>
-      <td class="col-num">${fmtLives(d.lives)}</td>
-      <td>${stageBadge(d.stageId, d.stage)}</td>
-      <td>${esc(d.championName) || '<span class="dash">—</span>'}</td>
-      <td>${esc(d.championRole) || '<span class="dash">—</span>'}</td>
+      <td class="col-name">${esc(m.title)}</td>
+      <td>${fmtMsDate(m.startMs)}<span style="color:var(--gray);font-size:11px;margin-left:4px">${fmtMsTime(m.startMs)}</span></td>
+      <td>${esc(m.owner)}</td>
+      <td class="col-name">${m.dealName ? esc(m.dealName) : '<span class="dash">—</span>'}</td>
+      <td class="col-num">${m.dealLives ? fmtLives(m.dealLives) : '<span class="dash">—</span>'}</td>
+      <td>${m.dealStageId ? stageBadge(m.dealStageId, m.dealStage) : '<span class="dash">—</span>'}</td>
+      <td>${m.outcome ? `<span class="stage-badge badge-active">${esc(m.outcome)}</span>` : '<span class="dash">—</span>'}</td>
     </tr>`;
   }
 
-  function meetingTable(rows) {
+  function engTable(rows, emptyMsg) {
+    if (!rows.length) return `<div class="empty-state"><div class="empty-icon">📅</div><div class="empty-title">${emptyMsg}</div><div class="empty-sub">Meetings are pulled from HubSpot meeting engagements</div></div>`;
     return `<div class="table-wrap"><div class="tscroll"><table class="deal-table">
       <thead><tr>
-        <th>Practice Name</th><th>Meeting Date</th><th>Owner</th>
-        <th class="col-num">Lives</th><th>Stage</th><th>Champion</th><th>Role</th>
+        <th>Meeting Title</th><th>Date &amp; Time</th><th>Owner</th>
+        <th>Practice / Deal</th><th class="col-num">Lives</th><th>Stage</th><th>Outcome</th>
       </tr></thead>
-      <tbody>${rows.map(meetingRow).join('')}</tbody>
+      <tbody>${rows.map(engRow).join('')}</tbody>
     </table></div></div>`;
   }
 
-  const upcomingHTML = upcoming.length
-    ? meetingTable(upcoming)
-    : `<div class="empty-state">
-        <div class="empty-icon">📅</div>
-        <div class="empty-title">No meetings in the next 7 days</div>
-        <div class="empty-sub">Meeting dates come from the <em>meeting_date</em> field in HubSpot</div>
-      </div>`;
-
-  const recentHTML = recent.length
-    ? meetingTable(recent)
-    : `<div style="padding:16px 0;color:var(--gray);font-size:13px">No meetings in the past 14 days.</div>`;
+  // Also show deal-level meeting_date as a fallback supplemental section
+  const dealMeetings = (_data && _data.deals || []).filter(d => d.meetingDate);
 
   $('panel-2').innerHTML = `
     <div class="section-header">
       <h2 class="section-title">Meetings — Next 7 Days</h2>
       <span class="badge">${upcoming.length}</span>
     </div>
-    ${upcomingHTML}
+    ${engTable(upcoming, 'No meetings scheduled in the next 7 days')}
+
     <div class="section-header" style="margin-top:28px">
       <h2 class="section-title">Recent Meetings — Past 14 Days</h2>
       <span class="badge">${recent.length}</span>
     </div>
-    ${recentHTML}
+    ${engTable(recent, 'No meetings in the past 14 days')}
+
+    ${dealMeetings.length ? `
+    <div class="section-header" style="margin-top:28px">
+      <h2 class="section-title">Deals with Meeting Date Set</h2>
+      <span class="badge">${dealMeetings.length}</span>
+    </div>
+    <div class="table-wrap"><div class="tscroll"><table class="deal-table">
+      <thead><tr>
+        <th>Practice Name</th><th>Meeting Date</th><th>Owner</th>
+        <th class="col-num">Lives</th><th>Stage</th><th>Champion</th>
+      </tr></thead>
+      <tbody>${dealMeetings.sort((a,b) => (a.meetingDate||'').localeCompare(b.meetingDate||'')).map(d => `<tr>
+        <td class="col-name">${esc(d.dealname)}</td>
+        <td>${fmtDate(d.meetingDate)}</td>
+        <td>${esc(d.owner)}</td>
+        <td class="col-num">${fmtLives(d.lives)}</td>
+        <td>${stageBadge(d.stageId, d.stage)}</td>
+        <td>${esc(d.championName) || '<span class="dash">—</span>'}</td>
+      </tr>`).join('')}</tbody>
+    </table></div></div>` : ''}
   `;
 }
 

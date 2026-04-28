@@ -117,7 +117,8 @@ function dispatchRender(idx) {
   if (idx === 2) renderMeetings();
   if (idx === 3) renderWoW();
   if (idx === 4) renderPipelineReview();
-  if (idx === 5) renderAllDeals();
+  if (idx === 5) renderTeamPerformance();
+  if (idx === 6) renderAllDeals();
 }
 
 // ── Fetch & render ─────────────────────────────────────────────────────────────

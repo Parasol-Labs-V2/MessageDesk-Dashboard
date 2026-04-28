@@ -244,6 +244,10 @@ input, select { font-family: inherit; }
 .row-loi-dot  { background: #3B82F6; }
 .row-warn-dot { background: #EAB308; }
 
+/* ── Clickable table rows ───────────────────────────────────────────────────── */
+.deal-table tbody tr[onclick]:hover { background: #EFF6FF !important; }
+.deal-table tbody tr[onclick] td:first-child { text-decoration: underline; text-decoration-style: dotted; }
+
 /* ── Sort icon ──────────────────────────────────────────────────────────────── */
 .sort-icon        { font-size: 10px; color: #D1D5DB; margin-left: 3px; }
 .sort-icon.active { color: var(--blue); }

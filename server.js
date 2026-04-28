@@ -188,6 +188,159 @@ async function getData(force = false) {
   return _pending;
 }
 
+// ── /api/meetings — HubSpot meeting engagements, enriched with deal data ───────
+app.get('/api/meetings', async (req, res) => {
+  try {
+    await getData(); // ensure deal cache is warm
+
+    const now    = Date.now();
+    const past14 = now - 14 * 24 * 60 * 60 * 1000;
+    const next7  = now +  7 * 24 * 60 * 60 * 1000;
+
+    // 1. Search meetings in the window [past14, next7]
+    const searchRes = await fetch('https://api.hubapi.com/crm/v3/objects/meetings/search', {
+      method: 'POST',
+      headers: hubHeaders(),
+      body: JSON.stringify({
+        filterGroups: [{
+          filters: [
+            { propertyName: 'hs_meeting_start_time', operator: 'GTE', value: String(past14) },
+            { propertyName: 'hs_meeting_start_time', operator: 'LTE', value: String(next7)  },
+          ],
+        }],
+        properties: ['hs_meeting_title','hs_meeting_start_time','hs_meeting_end_time',
+                     'hubspot_owner_id','hs_meeting_outcome'],
+        limit: 100,
+      }),
+    });
+
+    if (!searchRes.ok) {
+      const txt = await searchRes.text();
+      throw new Error(`HubSpot meetings search ${searchRes.status}: ${txt.slice(0, 200)}`);
+    }
+
+    const meetings = (await searchRes.json()).results || [];
+    if (meetings.length === 0) {
+      return res.json({ upcoming: [], recent: [], fetchedAt: new Date().toISOString() });
+    }
+
+    // 2. Batch-fetch meeting → deal associations
+    const dealIdsByMeeting = {};
+    try {
+      const assocRes = await fetch('https://api.hubapi.com/crm/v4/associations/meetings/deals/batch/read', {
+        method: 'POST',
+        headers: hubHeaders(),
+        body: JSON.stringify({ inputs: meetings.map(m => ({ id: m.id })) }),
+      });
+      if (assocRes.ok) {
+        const assocData = await assocRes.json();
+        for (const r of (assocData.results || [])) {
+          dealIdsByMeeting[r.from.id] = (r.to || []).map(t => t.toObjectId || t.id);
+        }
+      }
+    } catch (e) {
+      console.warn('Association fetch failed:', e.message);
+    }
+
+    // 3. Build enriched meeting objects
+    const dealById = {};
+    if (_cache) _cache.deals.forEach(d => { dealById[d.id] = d; });
+
+    const enriched = await Promise.all(meetings.map(async m => {
+      const p          = m.properties || {};
+      const startMs    = p.hs_meeting_start_time ? parseInt(p.hs_meeting_start_time) : null;
+      const endMs      = p.hs_meeting_end_time   ? parseInt(p.hs_meeting_end_time)   : null;
+      const ownerName  = await resolveOwner(p.hubspot_owner_id || '');
+      const dealIds    = dealIdsByMeeting[m.id] || [];
+      const deal       = dealIds.length ? dealById[dealIds[0]] : null;
+
+      return {
+        id:          m.id,
+        title:       p.hs_meeting_title || '(No title)',
+        startMs,
+        endMs,
+        outcome:     p.hs_meeting_outcome || null,
+        owner:       ownerName,
+        dealId:      deal ? deal.id       : null,
+        dealName:    deal ? deal.dealname : null,
+        dealLives:   deal ? deal.lives    : 0,
+        dealStage:   deal ? deal.stage    : null,
+        dealStageId: deal ? deal.stageId  : null,
+      };
+    }));
+
+    const upcoming = enriched
+      .filter(m => m.startMs && m.startMs >= now && m.startMs <= next7)
+      .sort((a, b) => a.startMs - b.startMs);
+    const recent = enriched
+      .filter(m => m.startMs && m.startMs < now && m.startMs >= past14)
+      .sort((a, b) => b.startMs - a.startMs);
+
+    res.json({ upcoming, recent, fetchedAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('Meetings error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── /api/team-performance — per-owner breakdown from cached deal data ──────────
+app.get('/api/team-performance', async (req, res) => {
+  try {
+    const { deals, updatedAt } = await getData();
+
+    const byOwner = {};
+    for (const d of deals) {
+      if (!byOwner[d.owner]) {
+        byOwner[d.owner] = {
+          owner:                d.owner,
+          totalDeals:           0,
+          activeDeals:          0,
+          activeLives:          0,
+          untouched:            0,  // active deals with 0 outreach attempts
+          meetingsBooked:       0,  // active deals with meeting_date set
+          totalOutreachAttempts:0,
+          lastActivity:         null,
+        };
+      }
+      const o = byOwner[d.owner];
+      o.totalDeals++;
+
+      if (d.isActive) {
+        o.activeDeals++;
+        o.activeLives          += d.lives;
+        o.totalOutreachAttempts += d.outreachAttempts;
+        if (d.outreachAttempts === 0) o.untouched++;
+        if (d.meetingDate)            o.meetingsBooked++;
+      }
+
+      // Track most recent activity across all deals
+      const candidates = [d.lastOutreachDate, d.lastModified ? d.lastModified.split('T')[0] : null]
+        .filter(Boolean);
+      for (const c of candidates) {
+        if (!o.lastActivity || c > o.lastActivity) o.lastActivity = c;
+      }
+    }
+
+    const owners = Object.values(byOwner)
+      .filter(o => o.totalDeals > 0)
+      .sort((a, b) => b.activeLives - a.activeLives);
+
+    res.json({
+      owners,
+      summary: {
+        totalOwners:     owners.length,
+        totalUntouched:  owners.reduce((s, o) => s + o.untouched, 0),
+        totalMeetings:   owners.reduce((s, o) => s + o.meetingsBooked, 0),
+        totalActiveLives:owners.reduce((s, o) => s + o.activeLives, 0),
+      },
+      updatedAt,
+    });
+  } catch (e) {
+    console.error('Team performance error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/deals', async (req, res) => {
   try {
     res.json(await getData(req.query.refresh === '1'));
