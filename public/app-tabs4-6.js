@@ -54,7 +54,7 @@ function renderWoW() {
 
   const sortByLives = arr => [...arr].sort((a, b) => b.lives - a.lives);
 
-  $('panel-3').innerHTML = `
+  $('panel-4').innerHTML = `
     <div class="kpi-row">
       <div class="kpi-card blue">
         <div class="kpi-label">Modified This Week</div>
@@ -142,7 +142,7 @@ function renderPipelineReview() {
 
   const th = (lbl, col) => sortTh(lbl, col, _prSort, 'sortPR');
 
-  $('panel-4').innerHTML = `
+  $('panel-5').innerHTML = `
     <div class="filter-bar">
       <label class="filter-label">Owner:</label>
       <select class="filter-select" onchange="setPROwner(this.value)">
@@ -188,11 +188,11 @@ function setPROwner(val) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// TAB 5 — Team Performance
+// TAB 1 — Team Performance (CEO / founder view)
 // ══════════════════════════════════════════════════════════════════════════════
 
 async function renderTeamPerformance() {
-  $('panel-5').innerHTML = `<div class="loading-wrap"><div class="spinner"></div><span class="loading-text">Loading team performance…</span></div>`;
+  $('panel-1').innerHTML = `<div class="loading-wrap"><div class="spinner"></div><span class="loading-text">Loading team performance…</span></div>`;
 
   let data;
   try {
@@ -200,138 +200,159 @@ async function renderTeamPerformance() {
     if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `HTTP ${res.status}`); }
     data = await res.json();
   } catch (e) {
-    $('panel-5').innerHTML = `<div class="error-box">⚠ Could not load team performance: ${esc(e.message)}</div>`;
+    $('panel-1').innerHTML = `<div class="error-box">⚠ Could not load team performance: ${esc(e.message)}</div>`;
     return;
   }
 
   const { owners, attention, summary } = data;
 
-  function pill(n, good, warn) {
-    const bg = n === 0 ? '#DCFCE7' : n <= (warn || 4) ? '#FEF3C7' : '#FEE2E2';
-    const fg = n === 0 ? '#16A34A' : n <= (warn || 4) ? '#D97706' : '#DC2626';
-    return `<span style="background:${bg};color:${fg};font-weight:700;padding:2px 8px;border-radius:6px;display:inline-block">${n}</span>`;
+  // ── helpers ──────────────────────────────────────────────────────────────────
+  const AVATAR_COLORS = { 'Joe': '#1B9BF0', 'Jonathan': '#7C3AED', 'Florencia': '#059669' };
+  function avatarColor(name) {
+    for (const [k, v] of Object.entries(AVATAR_COLORS)) if (name.includes(k)) return v;
+    return '#6B7280';
+  }
+  function initials(name) { return name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase(); }
+  function ownerHealth(o) {
+    const pct = o.activeDeals > 0 ? (o.untouched / o.activeDeals) * 100 : 0;
+    if (pct < 20) return { dot: '#22C55E', border: '#BBF7D0', bg: '#F0FDF4' };
+    if (pct < 40) return { dot: '#F59E0B', border: '#FDE68A', bg: '#FFFBEB' };
+    return { dot: '#EF4444', border: '#FECACA', bg: '#FEF2F2' };
+  }
+  function actionLine(o) {
+    const pct = o.activeDeals > 0 ? (o.untouched / o.activeDeals) * 100 : 0;
+    if (pct > 40) return `<div style="color:#DC2626;font-size:12px;font-weight:600;margin-top:10px;padding-top:10px;border-top:1px solid #FECACA">⚠️ ${o.untouched} account${o.untouched !== 1 ? 's' : ''} need first contact</div>`;
+    if (o.callsThisWeek > 10) return `<div style="color:#059669;font-size:12px;font-weight:600;margin-top:10px;padding-top:10px;border-top:1px solid #BBF7D0">✅ Active this week — ${o.callsThisWeek} calls logged</div>`;
+    if (o.lastActivity) {
+      const days = Math.round((Date.now() - new Date(o.lastActivity).getTime()) / 86400000);
+      if (days > 7) return `<div style="color:#D97706;font-size:12px;font-weight:600;margin-top:10px;padding-top:10px;border-top:1px solid #FDE68A">⚠️ No activity in ${days} days</div>`;
+    }
+    return `<div style="color:#6B7280;font-size:12px;margin-top:10px;padding-top:10px;border-top:1px solid #F3F4F6">On track</div>`;
   }
 
-  const rows = owners.map(o => {
-    const avg = o.activeDeals > 0 ? (o.totalOutreachAttempts / o.activeDeals).toFixed(1) : '—';
-    const callNote = o.callsThisWeek || o.notesThisWeek
-      ? `<span style="color:var(--blue);font-weight:600">${o.callsThisWeek}</span> / <span style="color:#7C3AED;font-weight:600">${o.notesThisWeek}</span>`
-      : `<span class="dash">—</span>`;
-    return `<tr style="cursor:pointer" onclick="filterAllDealsByOwner('${esc(o.owner)}')" title="Click to filter All Deals to ${esc(o.owner)}">
-      <td class="col-name" style="color:var(--blue);font-weight:600">${esc(o.owner)}</td>
-      <td class="col-num">${o.activeDeals} / ${o.totalDeals}</td>
-      <td class="col-num" style="font-weight:700">${fmtLives(o.activeLives)}</td>
-      <td class="col-num" style="color:var(--gray)">${o.pipelinePct}%</td>
-      <td class="col-num">${pill(o.untouched, 0, 4)}</td>
-      <td class="col-num">${o.contacted}</td>
-      <td class="col-num">${o.engaged}</td>
-      <td class="col-num">${o.meetingsBooked}</td>
-      <td class="col-num">${o.loiSent}</td>
-      <td class="col-num">${o.enrolled}</td>
-      <td class="col-num">${o.lostDQ}</td>
-      <td class="col-num">${avg}</td>
-      <td class="col-num">${callNote}</td>
-      <td>${o.lastActivity ? fmtDateStr(o.lastActivity) : '<span class="dash">—</span>'}</td>
-    </tr>`;
-  }).join('') || `<tr><td colspan="14" style="padding:20px;text-align:center;color:var(--gray)">No owner data available</td></tr>`;
+  // ── signal cards ──────────────────────────────────────────────────────────────
+  const lives = summary.totalActiveLives;
+  const livesH = lives >= 20000 ? { c:'#059669', bg:'#F0FDF4', b:'#BBF7D0', label:'🟢 Healthy' }
+               : lives >= 10000 ? { c:'#D97706', bg:'#FFFBEB', b:'#FDE68A', label:'🟡 Building' }
+               :                  { c:'#DC2626', bg:'#FEF2F2', b:'#FECACA', label:'🔴 Low' };
 
-  const attentionRows = (attention || []).slice(0, 20).map(d => {
-    const daysSince = d.lastOutreachDate
-      ? Math.round((Date.now() - new Date(d.lastOutreachDate).getTime()) / 86400000)
-      : null;
-    const reason = d.outreachAttempts === 0
-      ? `<span style="color:#DC2626;font-weight:600">Never contacted</span>`
-      : `<span style="color:#D97706;font-weight:600">${daysSince}d since outreach</span>`;
-    return `<tr onclick="filterAllDealsByOwner('${esc(d.owner)}')" style="cursor:pointer" title="Filter to ${esc(d.owner)}">
+  const calls = summary.totalCallsThisWeek;
+  const callsH = calls >= 50 ? { c:'#059669', bg:'#F0FDF4', b:'#BBF7D0', label:'🟢 High Activity' }
+               : calls >= 20  ? { c:'#D97706', bg:'#FFFBEB', b:'#FDE68A', label:'🟡 Moderate' }
+               :                { c:'#DC2626', bg:'#FEF2F2', b:'#FECACA', label:'🔴 Low Activity' };
+
+  const gap = summary.totalUntouched;
+  const gapLabel = gap === 0 ? '🟢 All Contacted' : '🔴 Needs Action';
+
+  function signalCard(bg, border, color, label, value, sub, badge) {
+    return `<div style="flex:1;min-width:200px;background:${bg};border:1.5px solid ${border};border-radius:16px;padding:24px 26px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:${color};opacity:.8;margin-bottom:6px">${label}</div>
+      <div style="font-size:38px;font-weight:800;color:${color};line-height:1.1;margin-bottom:4px">${value}</div>
+      <div style="font-size:13px;color:${color};opacity:.75;margin-bottom:12px">${sub}</div>
+      <span style="display:inline-block;background:${color}22;color:${color};padding:3px 10px;border-radius:99px;font-size:12px;font-weight:700">${badge}</span>
+    </div>`;
+  }
+
+  // ── owner cards ───────────────────────────────────────────────────────────────
+  const ownerCards = owners.map(o => {
+    const ac = avatarColor(o.owner);
+    const h  = ownerHealth(o);
+    const uc = o.untouched > 0 ? '#DC2626' : '#6B7280';
+    return `<div class="tp-owner-card" data-owner="${esc(o.owner)}" style="background:#fff;border:1.5px solid ${h.border};border-radius:14px;padding:20px;flex:1;min-width:210px;max-width:300px;cursor:pointer;transition:box-shadow .15s" onmouseenter="this.style.boxShadow='0 4px 16px rgba(0,0,0,.10)'" onmouseleave="this.style.boxShadow=''" onclick="filterAllDealsByOwner('${esc(o.owner)}')">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+        <div style="width:40px;height:40px;border-radius:50%;background:${ac};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;flex-shrink:0">${initials(o.owner)}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;font-size:15px;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(o.owner)}</div>
+          <div style="font-size:12px;color:#6B7280">${o.activeDeals} active · ${o.totalDeals} total</div>
+        </div>
+        <div title="${Math.round(o.activeDeals > 0 ? (o.untouched/o.activeDeals)*100 : 0)}% untouched" style="width:14px;height:14px;border-radius:50%;background:${h.dot};box-shadow:0 0 0 3px ${h.border};flex-shrink:0"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+        <div style="background:#F8FAFC;border-radius:8px;padding:10px 12px">
+          <div style="font-size:20px;font-weight:800;color:#111;line-height:1">${o.activeDeals}</div>
+          <div style="font-size:11px;color:#6B7280;margin-top:3px">Active Deals</div>
+        </div>
+        <div style="background:#F8FAFC;border-radius:8px;padding:10px 12px">
+          <div style="font-size:20px;font-weight:800;color:#111;line-height:1">${fmtLives(o.activeLives)}</div>
+          <div style="font-size:11px;color:#6B7280;margin-top:3px">Active Lives</div>
+        </div>
+        <div style="background:#F8FAFC;border-radius:8px;padding:10px 12px">
+          <div style="font-size:20px;font-weight:800;color:${uc};line-height:1">${o.untouched}</div>
+          <div style="font-size:11px;color:#6B7280;margin-top:3px">Untouched</div>
+        </div>
+        <div style="background:#F8FAFC;border-radius:8px;padding:10px 12px">
+          <div style="font-size:20px;font-weight:800;color:#1B9BF0;line-height:1">${o.callsThisWeek}</div>
+          <div style="font-size:11px;color:#6B7280;margin-top:3px">Calls (7d)</div>
+        </div>
+      </div>
+      <div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:#9CA3AF;margin-bottom:5px">
+          <span>Pipeline share</span><span style="font-weight:600;color:#374151">${o.pipelinePct}%</span>
+        </div>
+        <div style="height:6px;background:#E5E7EB;border-radius:99px;overflow:hidden">
+          <div style="height:100%;width:${Math.min(o.pipelinePct, 100)}%;background:${ac};border-radius:99px"></div>
+        </div>
+      </div>
+      ${actionLine(o)}
+    </div>`;
+  }).join('');
+
+  // ── attention table ───────────────────────────────────────────────────────────
+  const neglected = (attention || [])
+    .filter(d => d.outreachAttempts === 0 && d.createDate && (Date.now() - new Date(d.createDate).getTime()) / 86400000 > 14)
+    .slice(0, 10);
+
+  const attRows = neglected.map(d => {
+    const ageDays = d.createDate ? Math.round((Date.now() - new Date(d.createDate).getTime()) / 86400000) : '—';
+    const status  = `<span style="background:#FEE2E2;color:#DC2626;padding:2px 8px;border-radius:5px;font-size:12px;font-weight:600">Never Contacted</span>`;
+    return `<tr style="cursor:pointer" onclick="filterAllDealsByOwner('${esc(d.owner)}')" title="Filter to ${esc(d.owner)}">
       <td class="col-name">${esc(d.dealname)}</td>
-      <td>${stageBadge(d.stageId, d.stage)}</td>
-      <td class="col-num">${fmtLives(d.lives)}</td>
       <td>${esc(d.owner)}</td>
-      <td class="col-num">${d.outreachAttempts}</td>
-      <td>${reason}</td>
+      <td class="col-num">${fmtLives(d.lives)}</td>
+      <td>${stageBadge(d.stageId, d.stage)}</td>
+      <td class="col-num">${ageDays}d</td>
+      <td>${status}</td>
     </tr>`;
-  }).join('') || `<tr><td colspan="6" style="padding:12px 16px;color:var(--gray)">No accounts currently need attention.</td></tr>`;
+  }).join('') || `<tr><td colspan="6" style="padding:18px 16px;color:#6B7280;text-align:center">No neglected accounts — team is on it ✅</td></tr>`;
 
-  $('panel-5').innerHTML = `
-    <div class="kpi-row">
-      <div class="kpi-card blue">
-        <div class="kpi-label">Active Owners</div>
-        <div class="kpi-value">${summary.totalOwners}</div>
-        <div class="kpi-sub">with deals assigned</div>
-      </div>
-      <div class="kpi-card red">
-        <div class="kpi-label">Untouched Accounts</div>
-        <div class="kpi-value">${summary.totalUntouched}</div>
-        <div class="kpi-sub">active, 0 outreach attempts</div>
-      </div>
-      <div class="kpi-card yellow">
-        <div class="kpi-label">Meetings Booked</div>
-        <div class="kpi-value">${summary.totalMeetings}</div>
-        <div class="kpi-sub">active deals with meeting date</div>
-      </div>
-      <div class="kpi-card green">
-        <div class="kpi-label">Active Lives</div>
-        <div class="kpi-value">${fmtLives(summary.totalActiveLives)}</div>
-        <div class="kpi-sub">in active pipeline stages</div>
-      </div>
-      <div class="kpi-card" style="background:#F3E8FF;border-color:#C084FC">
-        <div class="kpi-label" style="color:#7C3AED">Calls / Notes (7d)</div>
-        <div class="kpi-value" style="color:#7C3AED">${summary.totalCallsThisWeek} / ${summary.totalNotesThisWeek}</div>
-        <div class="kpi-sub">logged this week</div>
-      </div>
+  // ── render ────────────────────────────────────────────────────────────────────
+  $('panel-1').innerHTML = `
+    <style>
+      .tp-section-hdr{display:flex;align-items:center;gap:10px;margin:28px 0 12px}
+      .tp-section-title{font-size:16px;font-weight:700;color:#111}
+      .tp-owners-wrap{display:flex;gap:16px;flex-wrap:wrap}
+      .tp-view-btn{margin-left:auto;padding:5px 14px;border:1.5px solid #E5E7EB;border-radius:7px;background:#fff;cursor:pointer;font-size:12px;font-weight:600;color:#374151}
+      .tp-view-btn:hover{background:#F3F4F6}
+      @media(max-width:640px){.tp-signal-row,.tp-owners-wrap{flex-direction:column}.tp-owner-card{max-width:unset!important}}
+    </style>
+
+    <div class="tp-signal-row" style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:4px">
+      ${signalCard(livesH.bg, livesH.b, livesH.c, 'Pipeline Health', fmtLives(lives), 'active lives in pipeline', livesH.label)}
+      ${signalCard('#FEF2F2','#FECACA','#DC2626','Outreach Gap', String(gap), 'accounts waiting for first contact', gapLabel)}
+      ${signalCard(callsH.bg, callsH.b, callsH.c, "This Week's Activity", `<span style="font-size:26px">${calls} <span style="font-size:18px;font-weight:600">calls</span> · ${summary.totalNotesThisWeek} <span style="font-size:18px;font-weight:600">notes</span></span>`, 'logged this week', callsH.label)}
     </div>
 
-    <div style="margin-bottom:4px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-      <span style="font-size:11px;color:var(--gray)">
-        <span style="display:inline-block;width:10px;height:10px;background:#DCFCE7;border:1px solid #16A34A;border-radius:2px;margin-right:3px"></span>0 untouched
-        <span style="display:inline-block;width:10px;height:10px;background:#FEF3C7;border:1px solid #D97706;border-radius:2px;margin:0 3px 0 8px"></span>1–4 untouched
-        <span style="display:inline-block;width:10px;height:10px;background:#FEE2E2;border:1px solid #E8231A;border-radius:2px;margin:0 3px 0 8px"></span>5+ untouched
-        &nbsp;·&nbsp; Click any row to filter All Deals
-        &nbsp;·&nbsp; <span style="color:var(--blue)">Calls</span> / <span style="color:#7C3AED">Notes</span> = this week
-      </span>
+    <div class="tp-section-hdr">
+      <div class="tp-section-title">Owner Performance</div>
+      <div style="font-size:12px;color:#9CA3AF">Click any card to view their deals in All Deals tab</div>
     </div>
+    <div class="tp-owners-wrap">${ownerCards}</div>
 
+    <div class="tp-section-hdr">
+      <div class="tp-section-title">🚨 Needs Attention</div>
+      <div style="font-size:12px;color:#9CA3AF">Never contacted · older than 14 days · ${neglected.length} account${neglected.length !== 1 ? 's' : ''}</div>
+      <button class="tp-view-btn" onclick="filterAllDealsByOwner('')">View All Deals →</button>
+    </div>
     <div class="table-wrap"><div class="tscroll">
       <table class="deal-table">
         <thead><tr>
-          <th>Owner</th>
-          <th class="col-num">Active / Total</th>
-          <th class="col-num">Active Lives</th>
-          <th class="col-num">% Pipeline</th>
-          <th class="col-num">Untouched</th>
-          <th class="col-num">Contacted</th>
-          <th class="col-num">Engaged</th>
-          <th class="col-num">Meetings</th>
-          <th class="col-num">LOI Sent</th>
-          <th class="col-num">Enrolled</th>
-          <th class="col-num">Lost/DQ</th>
-          <th class="col-num">Avg Outreach</th>
-          <th class="col-num">Calls/Notes (7d)</th>
-          <th>Last Activity</th>
+          <th>Practice</th><th>Owner</th>
+          <th class="col-num">Lives</th><th>Stage</th>
+          <th class="col-num">Days Old</th><th>Status</th>
         </tr></thead>
-        <tbody>${rows}</tbody>
+        <tbody>${attRows}</tbody>
       </table>
     </div></div>
-
-    <div style="margin-top:28px">
-      <div style="font-size:15px;font-weight:700;color:var(--red);margin-bottom:10px">
-        Accounts Needing Attention
-        <span style="font-size:12px;font-weight:400;color:var(--gray);margin-left:8px">(never contacted &gt;7d old, or last outreach &gt;14d ago)</span>
-      </div>
-      <div class="table-wrap"><div class="tscroll">
-        <table class="deal-table">
-          <thead><tr>
-            <th>Practice</th>
-            <th>Stage</th>
-            <th class="col-num">Lives</th>
-            <th>Owner</th>
-            <th class="col-num">Outreach Attempts</th>
-            <th>Status</th>
-          </tr></thead>
-          <tbody>${attentionRows}</tbody>
-        </table>
-      </div></div>
-    </div>
   `;
 }
 
