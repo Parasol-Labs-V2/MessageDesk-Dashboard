@@ -54,7 +54,7 @@ function renderWoW() {
 
   const sortByLives = arr => [...arr].sort((a, b) => b.lives - a.lives);
 
-  $('panel-3').innerHTML = `
+  $('panel-4').innerHTML = `
     <div class="kpi-row">
       <div class="kpi-card blue">
         <div class="kpi-label">Modified This Week</div>
@@ -142,7 +142,7 @@ function renderPipelineReview() {
 
   const th = (lbl, col) => sortTh(lbl, col, _prSort, 'sortPR');
 
-  $('panel-4').innerHTML = `
+  $('panel-5').innerHTML = `
     <div class="filter-bar">
       <label class="filter-label">Owner:</label>
       <select class="filter-select" onchange="setPROwner(this.value)">
@@ -192,7 +192,7 @@ function setPROwner(val) {
 // ══════════════════════════════════════════════════════════════════════════════
 
 async function renderTeamPerformance() {
-  $('panel-5').innerHTML = `<div class="loading-wrap"><div class="spinner"></div><span class="loading-text">Loading team performance…</span></div>`;
+  $('panel-1').innerHTML = `<div class="loading-wrap"><div class="spinner"></div><span class="loading-text">Loading team performance…</span></div>`;
 
   let data;
   try {
@@ -200,40 +200,59 @@ async function renderTeamPerformance() {
     if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `HTTP ${res.status}`); }
     data = await res.json();
   } catch (e) {
-    $('panel-5').innerHTML = `<div class="error-box">⚠ Could not load team performance: ${esc(e.message)}</div>`;
+    $('panel-1').innerHTML = `<div class="error-box">⚠ Could not load team performance: ${esc(e.message)}</div>`;
     return;
   }
 
-  const { owners, summary } = data;
+  const { owners, attention, summary } = data;
 
-  function untouchedColor(n) {
-    if (n > 10) return 'var(--red)';
-    if (n >= 5)  return '#D97706'; // amber
-    return 'var(--green)';
-  }
-
-  function untouchedBg(n) {
-    if (n > 10) return '#FEE2E2';
-    if (n >= 5)  return '#FEF3C7';
-    return '#DCFCE7';
+  function pill(n, good, warn) {
+    const bg = n === 0 ? '#DCFCE7' : n <= (warn || 4) ? '#FEF3C7' : '#FEE2E2';
+    const fg = n === 0 ? '#16A34A' : n <= (warn || 4) ? '#D97706' : '#DC2626';
+    return `<span style="background:${bg};color:${fg};font-weight:700;padding:2px 8px;border-radius:6px;display:inline-block">${n}</span>`;
   }
 
   const rows = owners.map(o => {
-    const avgAttempts = o.activeDeals > 0 ? (o.totalOutreachAttempts / o.activeDeals).toFixed(1) : '—';
-    const untouchedStyle = `background:${untouchedBg(o.untouched)};color:${untouchedColor(o.untouched)};font-weight:700;padding:2px 8px;border-radius:6px;display:inline-block`;
-    return `<tr style="cursor:pointer" onclick="filterAllDealsByOwner('${esc(o.owner)}')" title="Click to see ${esc(o.owner)}'s deals in All Deals tab">
-      <td class="col-name" style="color:var(--blue)">${esc(o.owner)}</td>
-      <td class="col-num">${o.totalDeals}</td>
-      <td class="col-num">${o.activeDeals}</td>
-      <td class="col-num">${fmtLives(o.activeLives)}</td>
-      <td class="col-num"><span style="${untouchedStyle}">${o.untouched}</span></td>
+    const avg = o.activeDeals > 0 ? (o.totalOutreachAttempts / o.activeDeals).toFixed(1) : '—';
+    const callNote = o.callsThisWeek || o.notesThisWeek
+      ? `<span style="color:var(--blue);font-weight:600">${o.callsThisWeek}</span> / <span style="color:#7C3AED;font-weight:600">${o.notesThisWeek}</span>`
+      : `<span class="dash">—</span>`;
+    return `<tr style="cursor:pointer" onclick="filterAllDealsByOwner('${esc(o.owner)}')" title="Click to filter All Deals to ${esc(o.owner)}">
+      <td class="col-name" style="color:var(--blue);font-weight:600">${esc(o.owner)}</td>
+      <td class="col-num">${o.activeDeals} / ${o.totalDeals}</td>
+      <td class="col-num" style="font-weight:700">${fmtLives(o.activeLives)}</td>
+      <td class="col-num" style="color:var(--gray)">${o.pipelinePct}%</td>
+      <td class="col-num">${pill(o.untouched, 0, 4)}</td>
+      <td class="col-num">${o.contacted}</td>
+      <td class="col-num">${o.engaged}</td>
       <td class="col-num">${o.meetingsBooked}</td>
-      <td class="col-num">${avgAttempts}</td>
+      <td class="col-num">${o.loiSent}</td>
+      <td class="col-num">${o.enrolled}</td>
+      <td class="col-num">${o.lostDQ}</td>
+      <td class="col-num">${avg}</td>
+      <td class="col-num">${callNote}</td>
       <td>${o.lastActivity ? fmtDateStr(o.lastActivity) : '<span class="dash">—</span>'}</td>
     </tr>`;
-  }).join('') || `<tr><td colspan="8" style="padding:20px;text-align:center;color:var(--gray)">No owner data available</td></tr>`;
+  }).join('') || `<tr><td colspan="14" style="padding:20px;text-align:center;color:var(--gray)">No owner data available</td></tr>`;
 
-  $('panel-5').innerHTML = `
+  const attentionRows = (attention || []).slice(0, 20).map(d => {
+    const daysSince = d.lastOutreachDate
+      ? Math.round((Date.now() - new Date(d.lastOutreachDate).getTime()) / 86400000)
+      : null;
+    const reason = d.outreachAttempts === 0
+      ? `<span style="color:#DC2626;font-weight:600">Never contacted</span>`
+      : `<span style="color:#D97706;font-weight:600">${daysSince}d since outreach</span>`;
+    return `<tr onclick="filterAllDealsByOwner('${esc(d.owner)}')" style="cursor:pointer" title="Filter to ${esc(d.owner)}">
+      <td class="col-name">${esc(d.dealname)}</td>
+      <td>${stageBadge(d.stageId, d.stage)}</td>
+      <td class="col-num">${fmtLives(d.lives)}</td>
+      <td>${esc(d.owner)}</td>
+      <td class="col-num">${d.outreachAttempts}</td>
+      <td>${reason}</td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="6" style="padding:12px 16px;color:var(--gray)">No accounts currently need attention.</td></tr>`;
+
+  $('panel-1').innerHTML = `
     <div class="kpi-row">
       <div class="kpi-card blue">
         <div class="kpi-label">Active Owners</div>
@@ -243,42 +262,76 @@ async function renderTeamPerformance() {
       <div class="kpi-card red">
         <div class="kpi-label">Untouched Accounts</div>
         <div class="kpi-value">${summary.totalUntouched}</div>
-        <div class="kpi-sub">active deals, 0 outreach attempts</div>
+        <div class="kpi-sub">active, 0 outreach attempts</div>
       </div>
       <div class="kpi-card yellow">
         <div class="kpi-label">Meetings Booked</div>
         <div class="kpi-value">${summary.totalMeetings}</div>
-        <div class="kpi-sub">active deals with meeting date set</div>
+        <div class="kpi-sub">active deals with meeting date</div>
       </div>
       <div class="kpi-card green">
-        <div class="kpi-label">Total Active Lives</div>
+        <div class="kpi-label">Active Lives</div>
         <div class="kpi-value">${fmtLives(summary.totalActiveLives)}</div>
-        <div class="kpi-sub">across all active owners</div>
+        <div class="kpi-sub">in active pipeline stages</div>
+      </div>
+      <div class="kpi-card" style="background:#F3E8FF;border-color:#C084FC">
+        <div class="kpi-label" style="color:#7C3AED">Calls / Notes (7d)</div>
+        <div class="kpi-value" style="color:#7C3AED">${summary.totalCallsThisWeek} / ${summary.totalNotesThisWeek}</div>
+        <div class="kpi-sub">logged this week</div>
       </div>
     </div>
 
-    <div class="legend-bar" style="margin-bottom:8px">
-      <span class="legend-item"><span class="legend-dot" style="background:#DCFCE7;border:1px solid #16A34A"></span>&lt;5 untouched — good</span>
-      <span class="legend-item"><span class="legend-dot" style="background:#FEF3C7;border:1px solid #D97706"></span>5–10 untouched — attention</span>
-      <span class="legend-item"><span class="legend-dot" style="background:#FEE2E2;border:1px solid #E8231A"></span>&gt;10 untouched — action needed</span>
-      <span style="font-size:11px;color:var(--gray);margin-left:8px">· Click any row to filter All Deals by that owner</span>
+    <div style="margin-bottom:4px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span style="font-size:11px;color:var(--gray)">
+        <span style="display:inline-block;width:10px;height:10px;background:#DCFCE7;border:1px solid #16A34A;border-radius:2px;margin-right:3px"></span>0 untouched
+        <span style="display:inline-block;width:10px;height:10px;background:#FEF3C7;border:1px solid #D97706;border-radius:2px;margin:0 3px 0 8px"></span>1–4 untouched
+        <span style="display:inline-block;width:10px;height:10px;background:#FEE2E2;border:1px solid #E8231A;border-radius:2px;margin:0 3px 0 8px"></span>5+ untouched
+        &nbsp;·&nbsp; Click any row to filter All Deals
+        &nbsp;·&nbsp; <span style="color:var(--blue)">Calls</span> / <span style="color:#7C3AED">Notes</span> = this week
+      </span>
     </div>
 
     <div class="table-wrap"><div class="tscroll">
       <table class="deal-table">
         <thead><tr>
           <th>Owner</th>
-          <th class="col-num">Total Deals</th>
-          <th class="col-num">Active Deals</th>
+          <th class="col-num">Active / Total</th>
           <th class="col-num">Active Lives</th>
-          <th class="col-num">Untouched (0 attempts)</th>
-          <th class="col-num">Meetings Booked</th>
+          <th class="col-num">% Pipeline</th>
+          <th class="col-num">Untouched</th>
+          <th class="col-num">Contacted</th>
+          <th class="col-num">Engaged</th>
+          <th class="col-num">Meetings</th>
+          <th class="col-num">LOI Sent</th>
+          <th class="col-num">Enrolled</th>
+          <th class="col-num">Lost/DQ</th>
           <th class="col-num">Avg Outreach</th>
+          <th class="col-num">Calls/Notes (7d)</th>
           <th>Last Activity</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div></div>
+
+    <div style="margin-top:28px">
+      <div style="font-size:15px;font-weight:700;color:var(--red);margin-bottom:10px">
+        Accounts Needing Attention
+        <span style="font-size:12px;font-weight:400;color:var(--gray);margin-left:8px">(never contacted &gt;7d old, or last outreach &gt;14d ago)</span>
+      </div>
+      <div class="table-wrap"><div class="tscroll">
+        <table class="deal-table">
+          <thead><tr>
+            <th>Practice</th>
+            <th>Stage</th>
+            <th class="col-num">Lives</th>
+            <th>Owner</th>
+            <th class="col-num">Outreach Attempts</th>
+            <th>Status</th>
+          </tr></thead>
+          <tbody>${attentionRows}</tbody>
+        </table>
+      </div></div>
+    </div>
   `;
 }
 

@@ -37,9 +37,15 @@ const ACTIVE_STAGE_IDS = new Set([
   '3446820540','3467565765','3477604030','3446820542',
 ]);
 
+const MID_FUNNEL_IDS = new Set([
+  '3446820539','3467751100','3446820540',
+  '3467565765','3477604030','3446820542',
+]);
+
 const OWNER_MAP = {
   '163553901': 'Jonathan Goldberg',
   '163553854': 'Florencia Scopp',
+  '163553855': 'Florencia Scopp',
   '83189293':  'Joe',
   '163575365': 'Jonathan Goldberg',
 };
@@ -161,6 +167,27 @@ function mapDeal(raw, ownerName) {
   };
 }
 
+async function fetchWeeklyEngagements(type, cutoffMs) {
+  try {
+    const res = await fetch(`https://api.hubapi.com/crm/v3/objects/${type}/search`, {
+      method: 'POST',
+      headers: hubHeaders(),
+      body: JSON.stringify({
+        filterGroups: [{
+          filters: [{ propertyName: 'hs_timestamp', operator: 'GTE', value: String(cutoffMs) }],
+        }],
+        properties: ['hubspot_owner_id', 'hs_timestamp'],
+        limit: 100,
+      }),
+    });
+    if (!res.ok) return [];
+    return (await res.json()).results || [];
+  } catch (e) {
+    console.warn(`fetchWeeklyEngagements(${type}) failed:`, e.message);
+    return [];
+  }
+}
+
 async function doRefresh() {
   const raw = await fetchAllDeals();
 
@@ -204,8 +231,7 @@ app.get('/api/meetings', async (req, res) => {
       body: JSON.stringify({
         filterGroups: [{
           filters: [
-            { propertyName: 'hs_meeting_start_time', operator: 'GTE', value: String(past14) },
-            { propertyName: 'hs_meeting_start_time', operator: 'LTE', value: String(next7)  },
+            { propertyName: 'hs_meeting_start_time', operator: 'BETWEEN', value: String(past14), highValue: String(next7) },
           ],
         }],
         properties: ['hs_meeting_title','hs_meeting_start_time','hs_meeting_end_time',
@@ -283,10 +309,42 @@ app.get('/api/meetings', async (req, res) => {
   }
 });
 
-// ── /api/team-performance — per-owner breakdown from cached deal data ──────────
+// ── /api/team-performance — per-owner breakdown with calls, notes, richer stats ─
 app.get('/api/team-performance', async (req, res) => {
   try {
     const { deals, updatedAt } = await getData();
+    const weekCutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+
+    // Fetch calls + notes from this week in parallel (non-fatal)
+    const [callsRaw, notesRaw] = await Promise.all([
+      fetchWeeklyEngagements('calls', weekCutoff),
+      fetchWeeklyEngagements('notes', weekCutoff),
+    ]);
+
+    // Resolve all owner IDs from engagements upfront
+    const engagementOwnerIds = [...new Set([
+      ...callsRaw.map(r => r.properties && r.properties.hubspot_owner_id),
+      ...notesRaw.map(r => r.properties && r.properties.hubspot_owner_id),
+    ].filter(Boolean))];
+    await Promise.all(engagementOwnerIds.map(resolveOwner));
+
+    function ownerNameFromId(id) {
+      if (!id) return null;
+      return OWNER_MAP[id] || _ownerCache[id] || null;
+    }
+
+    const callsByOwner = {};
+    for (const c of callsRaw) {
+      const name = ownerNameFromId(c.properties && c.properties.hubspot_owner_id);
+      if (name) callsByOwner[name] = (callsByOwner[name] || 0) + 1;
+    }
+    const notesByOwner = {};
+    for (const n of notesRaw) {
+      const name = ownerNameFromId(n.properties && n.properties.hubspot_owner_id);
+      if (name) notesByOwner[name] = (notesByOwner[name] || 0) + 1;
+    }
+
+    const totalActiveLives = deals.filter(d => d.isActive).reduce((s, d) => s + d.lives, 0);
 
     const byOwner = {};
     for (const d of deals) {
@@ -296,8 +354,13 @@ app.get('/api/team-performance', async (req, res) => {
           totalDeals:           0,
           activeDeals:          0,
           activeLives:          0,
-          untouched:            0,  // active deals with 0 outreach attempts
-          meetingsBooked:       0,  // active deals with meeting_date set
+          contacted:            0,
+          engaged:              0,
+          loiSent:              0,
+          enrolled:             0,
+          lostDQ:               0,
+          untouched:            0,
+          meetingsBooked:       0,
           totalOutreachAttempts:0,
           lastActivity:         null,
         };
@@ -307,13 +370,17 @@ app.get('/api/team-performance', async (req, res) => {
 
       if (d.isActive) {
         o.activeDeals++;
-        o.activeLives          += d.lives;
+        o.activeLives           += d.lives;
         o.totalOutreachAttempts += d.outreachAttempts;
-        if (d.outreachAttempts === 0) o.untouched++;
-        if (d.meetingDate)            o.meetingsBooked++;
+        if (d.outreachAttempts === 0)     o.untouched++;
+        if (d.outreachAttempts > 0)       o.contacted++;
+        if (MID_FUNNEL_IDS.has(d.stageId)) o.engaged++;
+        if (d.meetingDate)                o.meetingsBooked++;
       }
+      if (d.loiSentDate) o.loiSent++;
+      if (d.isWon)       o.enrolled++;
+      if (d.isLost || d.isDQ) o.lostDQ++;
 
-      // Track most recent activity across all deals
       const candidates = [d.lastOutreachDate, d.lastModified ? d.lastModified.split('T')[0] : null]
         .filter(Boolean);
       for (const c of candidates) {
@@ -323,15 +390,49 @@ app.get('/api/team-performance', async (req, res) => {
 
     const owners = Object.values(byOwner)
       .filter(o => o.totalDeals > 0)
+      .map(o => ({
+        ...o,
+        pipelinePct:   totalActiveLives > 0 ? Math.round((o.activeLives / totalActiveLives) * 100) : 0,
+        callsThisWeek: callsByOwner[o.owner] || 0,
+        notesThisWeek: notesByOwner[o.owner] || 0,
+      }))
       .sort((a, b) => b.activeLives - a.activeLives);
+
+    // Accounts needing attention: active, no outreach and >7 days old, OR last outreach >14 days ago
+    const attention = deals
+      .filter(d => {
+        if (!d.isActive) return false;
+        const ageDays = d.createDate
+          ? (Date.now() - new Date(d.createDate).getTime()) / 86400000
+          : 0;
+        const daysSinceOutreach = d.lastOutreachDate
+          ? (Date.now() - new Date(d.lastOutreachDate).getTime()) / 86400000
+          : Infinity;
+        return (d.outreachAttempts === 0 && ageDays > 7) || daysSinceOutreach > 14;
+      })
+      .map(d => ({
+        id:               d.id,
+        dealname:         d.dealname,
+        stageId:          d.stageId,
+        stage:            d.stage,
+        owner:            d.owner,
+        lives:            d.lives,
+        outreachAttempts: d.outreachAttempts,
+        lastOutreachDate: d.lastOutreachDate,
+        createDate:       d.createDate ? d.createDate.split('T')[0] : null,
+      }))
+      .sort((a, b) => b.lives - a.lives);
 
     res.json({
       owners,
+      attention,
       summary: {
-        totalOwners:     owners.length,
-        totalUntouched:  owners.reduce((s, o) => s + o.untouched, 0),
-        totalMeetings:   owners.reduce((s, o) => s + o.meetingsBooked, 0),
-        totalActiveLives:owners.reduce((s, o) => s + o.activeLives, 0),
+        totalOwners:        owners.length,
+        totalUntouched:     owners.reduce((s, o) => s + o.untouched, 0),
+        totalMeetings:      owners.reduce((s, o) => s + o.meetingsBooked, 0),
+        totalActiveLives,
+        totalCallsThisWeek: owners.reduce((s, o) => s + o.callsThisWeek, 0),
+        totalNotesThisWeek: owners.reduce((s, o) => s + o.notesThisWeek, 0),
       },
       updatedAt,
     });
