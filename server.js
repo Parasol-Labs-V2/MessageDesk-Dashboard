@@ -203,13 +203,31 @@ async function fetchAllOwners() {
 
 function getWeekBoundaries() {
   const now = new Date();
-  const daysSinceMon = now.getDay() === 0 ? 6 : now.getDay() - 1;
+  const daysSinceMon = now.getDay() === 0 ? 6 : now.getDay() - 1; // Mon=0…Sun=6
+
+  // This Monday at local midnight
   const thisMon = new Date(now);
   thisMon.setDate(now.getDate() - daysSinceMon);
   thisMon.setHours(0, 0, 0, 0);
+
+  // Last Monday at local midnight
   const lastMon = new Date(thisMon);
   lastMon.setDate(thisMon.getDate() - 7);
-  return { wtdStart: thisMon.getTime(), lastWeekStart: lastMon.getTime(), lastWeekEnd: thisMon.getTime() - 1 };
+
+  // Last Sunday at end-of-day (one ms before this Monday)
+  const lastSun = new Date(thisMon);
+  lastSun.setMilliseconds(-1); // = Sunday 23:59:59.999
+
+  console.log(`[getWeekBoundaries] today=${now.toISOString()} day=${now.getDay()}`);
+  console.log(`[getWeekBoundaries] thisMon=${thisMon.toISOString()} (${thisMon.getTime()})`);
+  console.log(`[getWeekBoundaries] lastMon=${lastMon.toISOString()} (${lastMon.getTime()})`);
+  console.log(`[getWeekBoundaries] lastSun=${lastSun.toISOString()} (${lastSun.getTime()})`);
+
+  return {
+    wtdStart:      thisMon.getTime(),
+    lastWeekStart: lastMon.getTime(),
+    lastWeekEnd:   lastSun.getTime(),
+  };
 }
 
 async function fetchEngagementsInRange(type, fromMs, toMs) {
@@ -395,6 +413,11 @@ app.get('/api/team-performance', async (req, res) => {
     const weekCutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
     const { wtdStart, lastWeekStart, lastWeekEnd } = getWeekBoundaries();
 
+    console.log('[team-performance] Fetching engagements...');
+    console.log(`  WTD calls:  ${new Date(wtdStart).toISOString()} → now`);
+    console.log(`  LW calls:   ${new Date(lastWeekStart).toISOString()} → ${new Date(lastWeekEnd).toISOString()}`);
+    console.log(`  LW ms:      ${lastWeekStart} → ${lastWeekEnd}`);
+
     // Fetch calls + notes (rolling 7d) plus WTD and last-week calls in parallel
     const [callsRaw, notesRaw, wtdCallsRaw, lwCallsRaw] = await Promise.all([
       fetchWeeklyEngagements('calls', weekCutoff),
@@ -402,6 +425,8 @@ app.get('/api/team-performance', async (req, res) => {
       fetchEngagementsInRange('calls', wtdStart, Date.now()),
       fetchEngagementsInRange('calls', lastWeekStart, lastWeekEnd),
     ]);
+
+    console.log(`[team-performance] wtdCalls=${wtdCallsRaw.length} lwCalls=${lwCallsRaw.length}`);
 
     // Resolve all owner IDs from engagements upfront
     const engagementOwnerIds = [...new Set([
@@ -506,19 +531,21 @@ app.get('/api/team-performance', async (req, res) => {
       .sort((a, b) => b.lives - a.lives);
 
     // Week-bounded deal metrics
-    function dealActivity(fromMs, toMs) {
+    function dealActivity(label, fromMs, toMs) {
       const subset = deals.filter(d => {
         if (!d.lastModified) return false;
         const ms = new Date(d.lastModified).getTime();
         return ms >= fromMs && ms <= toMs;
       });
-      return {
+      const result = {
         meetingsBooked: subset.filter(d => d.stageId === '3467751100').length,
         dealsForward:   subset.filter(d => QUALIFIED_STAGE_IDS.has(d.stageId)).length,
       };
+      console.log(`[team-performance] dealActivity(${label}): subset=${subset.length} meetings=${result.meetingsBooked} forward=${result.dealsForward}`);
+      return result;
     }
-    const wtdDeals = dealActivity(wtdStart, Date.now());
-    const lwDeals  = dealActivity(lastWeekStart, lastWeekEnd);
+    const wtdDeals = dealActivity('wtd', wtdStart, Date.now());
+    const lwDeals  = dealActivity('lw',  lastWeekStart, lastWeekEnd);
 
     const payload = {
       owners,
