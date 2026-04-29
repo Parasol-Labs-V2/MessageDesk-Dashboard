@@ -160,7 +160,6 @@ async function renderActivePipeline() {
     })
     .catch(() => {});
 }
-}
 
 function toggleStage(id) {
   _expandedStage = _expandedStage === id ? null : id;
