@@ -171,18 +171,25 @@ function mapDeal(raw, ownerName) {
   };
 }
 
+// First names to normalize to single-name display (must match DUET_ORDER in frontend)
+const DUET_FIRST_NAMES = new Set(['Lauren', 'Joe', 'Florencia', 'Jonathan']);
+
 async function fetchAllOwners() {
   try {
     let after = null;
     let total = 0;
+    console.log('Fetching HubSpot owners...');
     while (true) {
       const url = `https://api.hubapi.com/crm/v3/owners?limit=100${after ? '&after=' + encodeURIComponent(after) : ''}`;
       const res = await fetch(url, { headers: hubHeaders() });
       if (!res.ok) break;
       const data = await res.json();
       for (const o of data.results || []) {
-        const name = [o.firstName, o.lastName].filter(Boolean).join(' ') || o.email || `Owner ${o.id}`;
-        if (!OWNER_MAP[String(o.id)]) _ownerCache[String(o.id)] = name;
+        const fullName = [o.firstName, o.lastName].filter(Boolean).join(' ') || o.email || `Owner ${o.id}`;
+        // Normalize Duet team members to first-name only so they match frontend DUET_ORDER
+        const displayName = DUET_FIRST_NAMES.has(o.firstName) ? o.firstName : fullName;
+        console.log(`  [owner] id=${o.id} firstName=${o.firstName || ''} lastName=${o.lastName || ''} → "${displayName}"`);
+        if (!OWNER_MAP[String(o.id)]) _ownerCache[String(o.id)] = displayName;
         total++;
       }
       after = data.paging && data.paging.next && data.paging.next.after;
@@ -213,16 +220,20 @@ async function fetchEngagementsInRange(type, fromMs, toMs) {
       body: JSON.stringify({
         filterGroups: [{
           filters: [
-            { propertyName: 'hs_timestamp', operator: 'GTE', value: String(fromMs) },
-            { propertyName: 'hs_timestamp', operator: 'LTE', value: String(toMs)  },
+            { propertyName: 'hs_timestamp', operator: 'BETWEEN', value: String(fromMs), highValue: String(toMs) },
           ],
         }],
         properties: ['hubspot_owner_id', 'hs_timestamp'],
         limit: 100,
       }),
     });
-    if (!res.ok) return [];
-    return (await res.json()).results || [];
+    if (!res.ok) {
+      console.warn(`fetchEngagementsInRange(${type}) HTTP ${res.status}`);
+      return [];
+    }
+    const results = (await res.json()).results || [];
+    console.log(`fetchEngagementsInRange(${type}) ${new Date(fromMs).toISOString().slice(0,10)}→${new Date(toMs).toISOString().slice(0,10)}: ${results.length} results`);
+    return results;
   } catch (e) {
     console.warn(`fetchEngagementsInRange(${type}) failed:`, e.message);
     return [];
@@ -558,6 +569,19 @@ app.get('/api/pipeline-stats', async (req, res) => {
       }
     }
     res.json({ stages: Object.values(stats), updatedAt });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Debug endpoint: hit /api/owners-debug to see all resolved owner IDs and names
+app.get('/api/owners-debug', async (req, res) => {
+  try {
+    await fetchAllOwners();
+    res.json({
+      ownerMap:   OWNER_MAP,
+      ownerCache: _ownerCache,
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

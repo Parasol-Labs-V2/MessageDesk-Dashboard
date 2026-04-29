@@ -88,16 +88,25 @@ async function renderActivePipeline() {
   // Qualified metrics (Meeting Booked and beyond)
   const qualified    = deals.filter(d => QUALIFIED_IDS.has(d.stageId));
   const qualLives    = qualified.reduce((s, d) => s + d.lives, 0);
-  const qualSavings  = qualified.reduce((s, d) => s + d.grossSavings, 0);
+  const qualSavings  = qualified.reduce((s, d) => s + Math.max(0, d.grossSavings || 0), 0);
 
   // Week-bounded deal activity (computed synchronously from cached data)
   const { wtdStart, lwStart, lwEnd } = wtdBounds();
   function dealMetrics(fromMs, toMs) {
-    const sub = deals.filter(d => d.lastModified && new Date(d.lastModified).getTime() >= fromMs && new Date(d.lastModified).getTime() <= toMs);
-    return {
-      meetings: sub.filter(d => d.stageId === '3467751100').length,
-      forward:  sub.filter(d => QUALIFIED_IDS.has(d.stageId)).length,
-    };
+    // Meetings: use meetingDate (when meeting was scheduled) rather than lastModified + stageId,
+    // since deals often advance past Meeting Booked before the week ends
+    const meetings = deals.filter(d => {
+      if (!d.meetingDate) return false;
+      const ms = new Date(d.meetingDate + 'T12:00:00').getTime();
+      return ms >= fromMs && ms <= toMs;
+    }).length;
+    // Deals forward: deals in a qualified stage that were last modified in the window
+    const forward = deals.filter(d => {
+      if (!d.lastModified) return false;
+      const ms = new Date(d.lastModified).getTime();
+      return ms >= fromMs && ms <= toMs && QUALIFIED_IDS.has(d.stageId);
+    }).length;
+    return { meetings, forward };
   }
   const wtd = dealMetrics(wtdStart, Date.now());
   const lw  = dealMetrics(lwStart, lwEnd);
