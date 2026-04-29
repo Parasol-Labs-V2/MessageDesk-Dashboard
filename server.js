@@ -47,10 +47,10 @@ const QUALIFIED_STAGE_IDS = new Set([
 ]);
 
 const OWNER_MAP = {
-  '163553901': 'Jonathan Goldberg',
-  '163553854': 'Florencia Scopp',
-  '163553855': 'Florencia Scopp',
   '83189293':  'Joe',
+  '163553855': 'Lauren',
+  '163553854': 'Florencia Scopp',
+  '163553901': 'Jonathan Goldberg',
   '163575365': 'Jonathan Goldberg',
 };
 
