@@ -204,7 +204,7 @@ async function renderTeamPerformance() {
     return;
   }
 
-  const { owners, attention, summary } = data;
+  const { owners, attention, summary, activity } = data;
 
   // ── helpers ──────────────────────────────────────────────────────────────────
   const AVATAR_COLORS = { 'Joe': '#1B9BF0', 'Lauren': '#F59E0B', 'Florencia': '#059669', 'Jonathan': '#7C3AED' };
@@ -243,7 +243,7 @@ async function renderTeamPerformance() {
                : lives >= 10000 ? { c:'#D97706', bg:'#FFFBEB', b:'#FDE68A', label:'🟡 Building' }
                :                  { c:'#DC2626', bg:'#FEF2F2', b:'#FECACA', label:'🔴 Low' };
 
-  const calls = summary.totalCallsThisWeek;
+  const calls = (activity && activity.wtd && activity.wtd.calls) || 0;
   const callsH = calls >= 50 ? { c:'#059669', bg:'#F0FDF4', b:'#BBF7D0', label:'🟢 High Activity' }
                : calls >= 20  ? { c:'#D97706', bg:'#FFFBEB', b:'#FDE68A', label:'🟡 Moderate' }
                :                { c:'#DC2626', bg:'#FEF2F2', b:'#FECACA', label:'🔴 Low Activity' };
