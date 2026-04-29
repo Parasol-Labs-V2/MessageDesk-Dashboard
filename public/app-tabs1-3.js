@@ -6,13 +6,23 @@
 
 let _expandedStage = null;
 
-function renderActivePipeline() {
+// Qualified = Meeting Booked and beyond
+const QUALIFIED_IDS = new Set(['3467751100','3446820540','3467565765','3477604030','3446820542','3446820543']);
+
+function wtdBounds() {
+  const now = new Date();
+  const daysSinceMon = now.getDay() === 0 ? 6 : now.getDay() - 1;
+  const thisMon = new Date(now);
+  thisMon.setDate(now.getDate() - daysSinceMon);
+  thisMon.setHours(0, 0, 0, 0);
+  const lastMon = new Date(thisMon);
+  lastMon.setDate(thisMon.getDate() - 7);
+  return { wtdStart: thisMon.getTime(), lwStart: lastMon.getTime(), lwEnd: thisMon.getTime() - 1 };
+}
+
+async function renderActivePipeline() {
   const deals  = _data.deals;
   const active = deals.filter(d => d.isActive);
-
-  const totalLives   = active.reduce((s, d) => s + d.lives, 0);
-  const totalSavings = active.reduce((s, d) => s + d.grossSavings, 0);
-  const avgLives     = active.length ? Math.round(totalLives / active.length) : 0;
 
   const stageCards = STAGE_ORDER
     .filter(id => ACTIVE_STAGE_IDS.has(id))
@@ -75,31 +85,81 @@ function renderActivePipeline() {
         </div>`;
     }).join('');
 
+  // Qualified metrics (Meeting Booked and beyond)
+  const qualified    = deals.filter(d => QUALIFIED_IDS.has(d.stageId));
+  const qualLives    = qualified.reduce((s, d) => s + d.lives, 0);
+  const qualSavings  = qualified.reduce((s, d) => s + d.grossSavings, 0);
+
+  // Week-bounded deal activity (computed synchronously from cached data)
+  const { wtdStart, lwStart, lwEnd } = wtdBounds();
+  function dealMetrics(fromMs, toMs) {
+    const sub = deals.filter(d => d.lastModified && new Date(d.lastModified).getTime() >= fromMs && new Date(d.lastModified).getTime() <= toMs);
+    return {
+      meetings: sub.filter(d => d.stageId === '3467751100').length,
+      forward:  sub.filter(d => QUALIFIED_IDS.has(d.stageId)).length,
+    };
+  }
+  const wtd = dealMetrics(wtdStart, Date.now());
+  const lw  = dealMetrics(lwStart, lwEnd);
+
+  function activityCard(id, label, callsId, callsVal, metrics) {
+    const isWTD = id === 'wtd';
+    const bg    = isWTD ? '#F5F3FF' : '#F8FAFC';
+    const accent= isWTD ? '#7C3AED' : '#374151';
+    return `<div class="kpi-card" style="background:${bg};border-color:${accent}30;min-width:180px">
+      <div class="kpi-label" style="color:${accent}">${label}</div>
+      <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:12px;color:#6B7280">Calls</span>
+          <span id="${callsId}" style="font-weight:700;font-size:15px;color:${accent}">${callsVal}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:12px;color:#6B7280">Meetings Booked</span>
+          <span style="font-weight:700;font-size:15px;color:${accent}">${metrics.meetings}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:12px;color:#6B7280">Deals Qualified</span>
+          <span style="font-weight:700;font-size:15px;color:${accent}">${metrics.forward}</span>
+        </div>
+      </div>
+    </div>`;
+  }
+
   $('panel-0').innerHTML = `
     <div class="kpi-row">
-      <div class="kpi-card red">
-        <div class="kpi-label">Total Active Lives</div>
-        <div class="kpi-value">${fmtLives(totalLives)}</div>
-        <div class="kpi-sub">across all active stages</div>
+      <div class="kpi-card green">
+        <div class="kpi-label">Qualified Lives</div>
+        <div class="kpi-value">${fmtLives(qualLives)}</div>
+        <div class="kpi-sub">Meeting Booked and beyond</div>
       </div>
       <div class="kpi-card blue">
-        <div class="kpi-label">Active Deals</div>
-        <div class="kpi-value">${active.length}</div>
-        <div class="kpi-sub">in pipeline</div>
+        <div class="kpi-label">Qualified Deals</div>
+        <div class="kpi-value">${qualified.length}</div>
+        <div class="kpi-sub">Meeting Booked and beyond</div>
       </div>
       <div class="kpi-card yellow">
-        <div class="kpi-label">Active Gross Savings</div>
-        <div class="kpi-value">${fmtSavingsRaw(totalSavings)}</div>
-        <div class="kpi-sub">estimated total</div>
+        <div class="kpi-label">Qualified Savings</div>
+        <div class="kpi-value">${fmtSavingsRaw(qualSavings)}</div>
+        <div class="kpi-sub">Meeting Booked and beyond</div>
       </div>
-      <div class="kpi-card black">
-        <div class="kpi-label">Avg Lives / Deal</div>
-        <div class="kpi-value">${fmtLives(avgLives)}</div>
-        <div class="kpi-sub">across active pipeline</div>
-      </div>
+      ${activityCard('lw',  'Last Week Activity', 'ap-lw-calls',  '…', lw)}
+      ${activityCard('wtd', 'WTD Activity',        'ap-wtd-calls', '…', wtd)}
     </div>
     <div class="stage-cards-grid">${stageCards || '<div class="empty-state"><div class="empty-title">No active deals found</div></div>'}</div>
   `;
+
+  // Fetch calls counts from team-performance in background and fill in
+  fetch('/api/team-performance')
+    .then(r => r.ok ? r.json() : null)
+    .then(tp => {
+      if (!tp || !tp.activity) return;
+      const lwEl  = $('ap-lw-calls');
+      const wtdEl = $('ap-wtd-calls');
+      if (lwEl)  lwEl.textContent  = tp.activity.lastWeek.calls;
+      if (wtdEl) wtdEl.textContent = tp.activity.wtd.calls;
+    })
+    .catch(() => {});
+}
 }
 
 function toggleStage(id) {

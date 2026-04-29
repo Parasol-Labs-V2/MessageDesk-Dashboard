@@ -42,6 +42,10 @@ const MID_FUNNEL_IDS = new Set([
   '3467565765','3477604030','3446820542',
 ]);
 
+const QUALIFIED_STAGE_IDS = new Set([
+  '3467751100','3446820540','3467565765','3477604030','3446820542','3446820543',
+]);
+
 const OWNER_MAP = {
   '163553901': 'Jonathan Goldberg',
   '163553854': 'Florencia Scopp',
@@ -167,6 +171,55 @@ function mapDeal(raw, ownerName) {
   };
 }
 
+async function fetchAllOwners() {
+  try {
+    const res = await fetch('https://api.hubapi.com/crm/v3/owners?limit=100', { headers: hubHeaders() });
+    if (!res.ok) return;
+    for (const o of (await res.json()).results || []) {
+      const name = [o.firstName, o.lastName].filter(Boolean).join(' ') || o.email || `Owner ${o.id}`;
+      if (!OWNER_MAP[String(o.id)]) _ownerCache[String(o.id)] = name;
+    }
+    console.log('Pre-loaded HubSpot owners into cache');
+  } catch (e) {
+    console.warn('fetchAllOwners failed:', e.message);
+  }
+}
+
+function getWeekBoundaries() {
+  const now = new Date();
+  const daysSinceMon = now.getDay() === 0 ? 6 : now.getDay() - 1;
+  const thisMon = new Date(now);
+  thisMon.setDate(now.getDate() - daysSinceMon);
+  thisMon.setHours(0, 0, 0, 0);
+  const lastMon = new Date(thisMon);
+  lastMon.setDate(thisMon.getDate() - 7);
+  return { wtdStart: thisMon.getTime(), lastWeekStart: lastMon.getTime(), lastWeekEnd: thisMon.getTime() - 1 };
+}
+
+async function fetchEngagementsInRange(type, fromMs, toMs) {
+  try {
+    const res = await fetch(`https://api.hubapi.com/crm/v3/objects/${type}/search`, {
+      method: 'POST',
+      headers: hubHeaders(),
+      body: JSON.stringify({
+        filterGroups: [{
+          filters: [
+            { propertyName: 'hs_timestamp', operator: 'GTE', value: String(fromMs) },
+            { propertyName: 'hs_timestamp', operator: 'LTE', value: String(toMs)  },
+          ],
+        }],
+        properties: ['hubspot_owner_id', 'hs_timestamp'],
+        limit: 100,
+      }),
+    });
+    if (!res.ok) return [];
+    return (await res.json()).results || [];
+  } catch (e) {
+    console.warn(`fetchEngagementsInRange(${type}) failed:`, e.message);
+    return [];
+  }
+}
+
 async function fetchWeeklyEngagements(type, cutoffMs) {
   try {
     const res = await fetch(`https://api.hubapi.com/crm/v3/objects/${type}/search`, {
@@ -189,6 +242,7 @@ async function fetchWeeklyEngagements(type, cutoffMs) {
 }
 
 async function doRefresh() {
+  await fetchAllOwners();
   const raw = await fetchAllDeals();
 
   // Collect unique unknown owner IDs and resolve them in parallel
@@ -203,8 +257,9 @@ async function doRefresh() {
     return mapDeal(r, ownerName);
   }));
 
-  _cache     = { deals, updatedAt: new Date().toISOString() };
-  _cacheTime  = Date.now();
+  _cache = { deals, updatedAt: new Date().toISOString() };
+  _cacheTime = Date.now();
+  _tpCache = null; _tpCacheTime = 0; // invalidate TP cache on deal refresh
   console.log('Cache ready:', deals.length, 'deals');
   return _cache;
 }
@@ -309,16 +364,23 @@ app.get('/api/meetings', async (req, res) => {
   }
 });
 
+let _tpCache = null, _tpCacheTime = 0;
+
 // ── /api/team-performance — per-owner breakdown with calls, notes, richer stats ─
 app.get('/api/team-performance', async (req, res) => {
   try {
+    if (_tpCache && Date.now() - _tpCacheTime < TTL) return res.json(_tpCache);
+
     const { deals, updatedAt } = await getData();
     const weekCutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const { wtdStart, lastWeekStart, lastWeekEnd } = getWeekBoundaries();
 
-    // Fetch calls + notes from this week in parallel (non-fatal)
-    const [callsRaw, notesRaw] = await Promise.all([
+    // Fetch calls + notes (rolling 7d) plus WTD and last-week calls in parallel
+    const [callsRaw, notesRaw, wtdCallsRaw, lwCallsRaw] = await Promise.all([
       fetchWeeklyEngagements('calls', weekCutoff),
       fetchWeeklyEngagements('notes', weekCutoff),
+      fetchEngagementsInRange('calls', wtdStart, Date.now()),
+      fetchEngagementsInRange('calls', lastWeekStart, lastWeekEnd),
     ]);
 
     // Resolve all owner IDs from engagements upfront
@@ -423,9 +485,28 @@ app.get('/api/team-performance', async (req, res) => {
       }))
       .sort((a, b) => b.lives - a.lives);
 
-    res.json({
+    // Week-bounded deal metrics
+    function dealActivity(fromMs, toMs) {
+      const subset = deals.filter(d => {
+        if (!d.lastModified) return false;
+        const ms = new Date(d.lastModified).getTime();
+        return ms >= fromMs && ms <= toMs;
+      });
+      return {
+        meetingsBooked: subset.filter(d => d.stageId === '3467751100').length,
+        dealsForward:   subset.filter(d => QUALIFIED_STAGE_IDS.has(d.stageId)).length,
+      };
+    }
+    const wtdDeals = dealActivity(wtdStart, Date.now());
+    const lwDeals  = dealActivity(lastWeekStart, lastWeekEnd);
+
+    const payload = {
       owners,
       attention,
+      activity: {
+        wtd:      { calls: wtdCallsRaw.length,  ...wtdDeals },
+        lastWeek: { calls: lwCallsRaw.length,   ...lwDeals  },
+      },
       summary: {
         totalOwners:        owners.length,
         totalUntouched:     owners.reduce((s, o) => s + o.untouched, 0),
@@ -435,7 +516,9 @@ app.get('/api/team-performance', async (req, res) => {
         totalNotesThisWeek: owners.reduce((s, o) => s + o.notesThisWeek, 0),
       },
       updatedAt,
-    });
+    };
+    _tpCache = payload; _tpCacheTime = Date.now();
+    res.json(payload);
   } catch (e) {
     console.error('Team performance error:', e.message);
     res.status(500).json({ error: e.message });

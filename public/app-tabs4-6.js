@@ -207,7 +207,14 @@ async function renderTeamPerformance() {
   const { owners, attention, summary } = data;
 
   // ── helpers ──────────────────────────────────────────────────────────────────
-  const AVATAR_COLORS = { 'Joe': '#1B9BF0', 'Jonathan': '#7C3AED', 'Florencia': '#059669' };
+  const AVATAR_COLORS = { 'Joe': '#1B9BF0', 'Lauren': '#F59E0B', 'Florencia': '#059669', 'Jonathan': '#7C3AED' };
+  const DUET_ORDER    = ['Joe', 'Lauren', 'Florencia', 'Jonathan'];
+  function ownerSortKey(name) {
+    const i = DUET_ORDER.findIndex(k => name.includes(k));
+    return i === -1 ? DUET_ORDER.length : i;
+  }
+  const sortedOwners = [...owners].sort((a, b) => ownerSortKey(a.owner) - ownerSortKey(b.owner));
+
   function avatarColor(name) {
     for (const [k, v] of Object.entries(AVATAR_COLORS)) if (name.includes(k)) return v;
     return '#6B7280';
@@ -254,7 +261,7 @@ async function renderTeamPerformance() {
   }
 
   // ── owner cards ───────────────────────────────────────────────────────────────
-  const ownerCards = owners.map(o => {
+  const ownerCards = sortedOwners.map(o => {
     const ac = avatarColor(o.owner);
     const h  = ownerHealth(o);
     const uc = o.untouched > 0 ? '#DC2626' : '#6B7280';
@@ -300,6 +307,7 @@ async function renderTeamPerformance() {
   // ── attention table ───────────────────────────────────────────────────────────
   const neglected = (attention || [])
     .filter(d => d.outreachAttempts === 0 && d.createDate && (Date.now() - new Date(d.createDate).getTime()) / 86400000 > 14)
+    .filter(d => !d.owner.includes('Jonathan'))
     .slice(0, 10);
 
   const attRows = neglected.map(d => {
@@ -340,7 +348,8 @@ async function renderTeamPerformance() {
 
     <div class="tp-section-hdr">
       <div class="tp-section-title">🚨 Needs Attention</div>
-      <div style="font-size:12px;color:#9CA3AF">Never contacted · older than 14 days · ${neglected.length} account${neglected.length !== 1 ? 's' : ''}</div>
+      <div style="font-size:12px;color:#9CA3AF">Never contacted · older than 14 days · ${neglected.length} account${neglected.length !== 1 ? 's' : ''} · Parasol team only</div>
+      <span title="'Never Contacted' = deals where outreach_attempt_count = 0 in HubSpot. Jonathan's accounts excluded (not Parasol team)." style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#E5E7EB;color:#6B7280;font-size:11px;font-weight:700;cursor:help;flex-shrink:0">?</span>
       <button class="tp-view-btn" onclick="filterAllDealsByOwner('')">View All Deals →</button>
     </div>
     <div class="table-wrap"><div class="tscroll">
