@@ -912,7 +912,7 @@ async function renderMeetings() {
   const MONS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const byDay = {};
   meetings.forEach(m => {
-    const dt  = new Date((m.due_date || m.date || weekStart) + 'T12:00:00');
+    const dt  = new Date((m.demo_date || weekStart) + 'T12:00:00');
     const key = dt.toISOString().split('T')[0];
     if (!byDay[key]) byDay[key] = [];
     byDay[key].push({ ...m, _dt: dt });
@@ -1020,12 +1020,12 @@ function renderWoW() {
   const maxMov = Math.max(...movements.map(m => m.count), 1);
 
   const movRows = movements.map(m => `
-    <div class="movement-row">
-      <div style="width:130px;font-size:12px;font-weight:500">${m.label}</div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <div style="width:130px;font-size:12px;font-weight:500;flex-shrink:0">${m.label}</div>
       <div style="flex:1;background:var(--gray-light);border-radius:4px;height:10px;overflow:hidden">
         <div style="height:100%;width:${Math.round(m.count/maxMov*100)}%;background:${m.color};border-radius:4px"></div>
       </div>
-      <div style="width:28px;text-align:right;font-size:12px;font-weight:700;color:var(--gray)">${m.count}</div>
+      <div style="min-width:24px;text-align:right;font-size:12px;font-weight:700;color:var(--gray)">${m.count}</div>
     </div>`).join('');
 
   const wonRows = wonThis.slice(0,20).map(d => `<tr>
