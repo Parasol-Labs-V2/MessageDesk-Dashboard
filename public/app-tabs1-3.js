@@ -126,7 +126,7 @@ async function renderActivePipeline() {
   }
 
   $('panel-0').innerHTML = `
-    <div class="kpi-row">
+    <div class="kpi-row" style="grid-template-columns:repeat(5,1fr)">
       <div class="kpi-card green">
         <div class="kpi-label">Qualified Lives</div>
         <div class="kpi-value">${fmtLives(qualLives)}</div>

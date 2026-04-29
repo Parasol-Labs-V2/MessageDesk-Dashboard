@@ -173,13 +173,22 @@ function mapDeal(raw, ownerName) {
 
 async function fetchAllOwners() {
   try {
-    const res = await fetch('https://api.hubapi.com/crm/v3/owners?limit=100', { headers: hubHeaders() });
-    if (!res.ok) return;
-    for (const o of (await res.json()).results || []) {
-      const name = [o.firstName, o.lastName].filter(Boolean).join(' ') || o.email || `Owner ${o.id}`;
-      if (!OWNER_MAP[String(o.id)]) _ownerCache[String(o.id)] = name;
+    let after = null;
+    let total = 0;
+    while (true) {
+      const url = `https://api.hubapi.com/crm/v3/owners?limit=100${after ? '&after=' + encodeURIComponent(after) : ''}`;
+      const res = await fetch(url, { headers: hubHeaders() });
+      if (!res.ok) break;
+      const data = await res.json();
+      for (const o of data.results || []) {
+        const name = [o.firstName, o.lastName].filter(Boolean).join(' ') || o.email || `Owner ${o.id}`;
+        if (!OWNER_MAP[String(o.id)]) _ownerCache[String(o.id)] = name;
+        total++;
+      }
+      after = data.paging && data.paging.next && data.paging.next.after;
+      if (!after) break;
     }
-    console.log('Pre-loaded HubSpot owners into cache');
+    console.log(`Pre-loaded ${total} HubSpot owners into cache`);
   } catch (e) {
     console.warn('fetchAllOwners failed:', e.message);
   }
