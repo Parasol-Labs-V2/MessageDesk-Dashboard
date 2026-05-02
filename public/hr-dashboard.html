@@ -1,0 +1,1534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HR Dashboard — Parasol</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* ─── Variables ──────────────────────────────────────────────────────────────── */
+:root {
+  --red:         #E8231A;
+  --yellow:      #F5C800;
+  --blue:        #1B9BF0;
+  --black:       #111111;
+  --cream:       #FAF5EE;
+  --gray:        #6B7280;
+  --green:       #16A34A;
+  --green-bg:    #DCFCE7;
+  --gray-light:  #F3F4F6;
+  --gray-border: #E5E7EB;
+  --teal:        #00695C;
+  --teal-bg:     #E0F2F1;
+  --purple:      #7C3AED;
+  --purple-bg:   #EDE9FE;
+  --orange:      #EA580C;
+  --orange-bg:   #FEF0E7;
+  --pink:        #DB2777;
+  --pink-bg:     #FCE7F3;
+  --radius:      12px;
+  --shadow:      0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 14px; }
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--cream);
+  color: var(--black);
+  line-height: 1.5;
+  min-height: 100vh;
+}
+button { font-family: inherit; cursor: pointer; border: none; }
+
+/* ─── Layout ─────────────────────────────────────────────────────────────────── */
+.g4 { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; }
+.g3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; }
+.g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.g2-3 { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
+.g1-2 { display: grid; grid-template-columns: 1fr 2fr; gap: 20px; }
+
+/* ─── Header ─────────────────────────────────────────────────────────────────── */
+.site-header {
+  background: var(--black);
+  border-bottom: 3px solid var(--red);
+  position: sticky; top: 0; z-index: 100;
+}
+.header-inner {
+  display: flex; align-items: center; gap: 14px;
+  height: 60px; max-width: 1400px; margin: 0 auto; padding: 0 24px;
+}
+.parasol-logo {
+  width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
+  background: conic-gradient(var(--red) 0deg 120deg, var(--yellow) 120deg 240deg, var(--blue) 240deg 360deg);
+}
+.header-titles { flex: 1; min-width: 0; }
+.header-titles h1 { font-size: 15px; font-weight: 700; color: #fff; letter-spacing: -.3px; }
+.header-titles .subtitle { font-size: 11px; color: #9CA3AF; margin-top: 1px; }
+.header-pills { display: flex; gap: 8px; }
+.pill {
+  background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.15);
+  color: #fff; border-radius: 20px; padding: 3px 11px;
+  font-size: 12px; font-weight: 500; white-space: nowrap;
+}
+.pill b { font-weight: 700; }
+.header-right { display: flex; align-items: center; gap: 10px; margin-left: 8px; flex-shrink: 0; }
+.updated-time { font-size: 11px; color: #9CA3AF; white-space: nowrap; }
+.back-btn {
+  background: rgba(255,255,255,.12); color: #fff;
+  border: 1px solid rgba(255,255,255,.2);
+  padding: 5px 13px; border-radius: 6px; font-size: 12px; font-weight: 600;
+  transition: background .15s; text-decoration: none; display: inline-block;
+}
+.back-btn:hover { background: rgba(255,255,255,.22); }
+
+/* ─── Tab Navigation ─────────────────────────────────────────────────────────── */
+.tabs-bar {
+  background: #fff; border-bottom: 1px solid var(--gray-border);
+  position: sticky; top: 63px; z-index: 90;
+}
+.tabs-inner {
+  display: flex; max-width: 1400px; margin: 0 auto; padding: 0 24px;
+  overflow-x: auto; scrollbar-width: none;
+}
+.tabs-inner::-webkit-scrollbar { display: none; }
+.tab-btn {
+  padding: 14px 18px; font-size: 13px; font-weight: 500; color: var(--gray);
+  background: none; border: none; border-bottom: 2px solid transparent;
+  white-space: nowrap; cursor: pointer; transition: color .15s, border-color .15s;
+  margin-bottom: -1px;
+}
+.tab-btn:hover { color: var(--black); }
+.tab-btn.active { color: var(--red); border-bottom-color: var(--red); font-weight: 700; }
+
+/* ─── Tab Panels ─────────────────────────────────────────────────────────────── */
+.tab-panel { display: none; padding: 20px 24px 48px; max-width: 1400px; margin: 0 auto; }
+.tab-panel.active { display: block; }
+
+/* ─── Alert Bar ──────────────────────────────────────────────────────────────── */
+.alert-bar {
+  background: var(--black); color: #fff; border-radius: 10px;
+  padding: 13px 18px; display: flex; align-items: center; gap: 10px;
+  font-size: 13px; font-weight: 500; margin-bottom: 20px; line-height: 1.5;
+}
+.alert-bar.blue  { background: #1D4ED8; }
+.alert-bar.green { background: var(--teal); }
+.alert-bar.purple { background: var(--purple); }
+.blink-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--red);
+  flex-shrink: 0; animation: blink 1.2s ease-in-out infinite;
+}
+.blink-dot.green  { background: #22C55E; }
+.blink-dot.yellow { background: var(--yellow); }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.15} }
+.alert-bar strong { color: var(--yellow); }
+
+/* ─── KPI Cards ──────────────────────────────────────────────────────────────── */
+.kpi-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; margin-bottom: 24px; }
+.kpi-grid.cols3 { grid-template-columns: repeat(3,1fr); }
+.kpi-grid.cols2 { grid-template-columns: repeat(2,1fr); }
+.kpi-grid.cols6 { grid-template-columns: repeat(6,1fr); }
+.kpi-card {
+  background: #fff; border-radius: var(--radius); box-shadow: var(--shadow);
+  border: 1px solid var(--gray-border); border-top: 3px solid var(--gray-border);
+  padding: 18px 20px;
+}
+.kpi-card.red    { border-top-color: var(--red); }
+.kpi-card.blue   { border-top-color: var(--blue); }
+.kpi-card.yellow { border-top-color: var(--yellow); }
+.kpi-card.black  { border-top-color: var(--black); }
+.kpi-card.green  { border-top-color: var(--green); }
+.kpi-card.teal   { border-top-color: var(--teal); }
+.kpi-card.purple { border-top-color: var(--purple); }
+.kpi-card.pink   { border-top-color: var(--pink); }
+.kpi-card.orange { border-top-color: var(--orange); }
+.kpi-label { font-size: 11px; font-weight: 600; color: var(--gray); text-transform: uppercase; letter-spacing: .6px; margin-bottom: 6px; }
+.kpi-value { font-size: 28px; font-weight: 800; line-height: 1.1; letter-spacing: -1px; }
+.kpi-value.sm { font-size: 22px; }
+.kpi-sub   { font-size: 12px; color: var(--gray); margin-top: 5px; }
+.kpi-prev  { font-size: 11px; color: var(--gray); margin-top: 4px; }
+.kpi-tag   { display: inline-block; margin-top: 9px; padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+.kpi-tag.red    { background: #FEE2E2; color: #991B1B; }
+.kpi-tag.yellow { background: #FEF9C3; color: #854D0E; }
+.kpi-tag.blue   { background: #DBEAFE; color: #1D4ED8; }
+.kpi-tag.green  { background: var(--green-bg); color: #166534; }
+.kpi-tag.black  { background: #F3F4F6; color: #374151; }
+.kpi-tag.purple { background: var(--purple-bg); color: #5B21B6; }
+.kpi-tag.pink   { background: var(--pink-bg); color: #9D174D; }
+.kpi-tag.teal   { background: var(--teal-bg); color: var(--teal); }
+
+/* ─── Delta Badges ───────────────────────────────────────────────────────────── */
+.delta { display: inline-block; padding: 2px 7px; border-radius: 20px; font-size: 12px; font-weight: 700; }
+.delta.pos { background: var(--green-bg); color: #166534; }
+.delta.neg { background: #FEE2E2; color: #991B1B; }
+.delta.neu { background: var(--gray-light); color: var(--gray); }
+
+/* ─── Metric Cards (dark) ────────────────────────────────────────────────────── */
+.metric-card {
+  background: var(--black); color: #fff; border-radius: var(--radius);
+  padding: 22px 20px; text-align: center; box-shadow: var(--shadow);
+}
+.metric-pct   { font-size: 38px; font-weight: 800; color: var(--yellow); line-height: 1; }
+.metric-label { font-size: 12px; color: #9CA3AF; margin-top: 6px; }
+.metric-sub   { font-size: 11px; color: #6B7280; margin-top: 2px; }
+
+/* ─── Chart Cards ────────────────────────────────────────────────────────────── */
+.chart-card {
+  background: #fff; border-radius: var(--radius); box-shadow: var(--shadow);
+  border: 1px solid var(--gray-border); padding: 20px;
+}
+.chart-title { font-size: 13px; font-weight: 700; margin-bottom: 16px; }
+.chart-subtitle { font-size: 11px; color: var(--gray); margin-top: -12px; margin-bottom: 16px; }
+.donut-wrap   { display: flex; align-items: center; gap: 24px; }
+.donut-legend { display: flex; flex-direction: column; gap: 9px; flex: 1; }
+.legend-item  { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.legend-dot   { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.legend-lbl   { flex: 1; color: var(--gray); }
+.legend-val   { font-weight: 700; font-size: 12px; }
+.legend-pct   { font-size: 11px; color: var(--gray); }
+
+/* ─── Horizontal Bar (CSS) ───────────────────────────────────────────────────── */
+.hbar-row { margin-bottom: 12px; }
+.hbar-meta { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px; }
+.hbar-meta .hbar-lbl { font-weight: 500; }
+.hbar-meta .hbar-cnt { color: var(--gray); font-weight: 600; }
+.hbar-track { height: 8px; background: var(--gray-light); border-radius: 4px; overflow: hidden; }
+.hbar-fill  { height: 100%; border-radius: 4px; transition: width .6s cubic-bezier(.4,0,.2,1); }
+
+/* ─── Section Head ───────────────────────────────────────────────────────────── */
+.section-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 16px 8px; background: #fff;
+  border-bottom: 1px solid var(--gray-border);
+}
+.section-title { font-size: 13px; font-weight: 700; }
+.section-badge {
+  padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 600;
+  background: var(--gray-light); color: var(--gray);
+}
+.table-wrap {
+  background: #fff; border-radius: var(--radius); box-shadow: var(--shadow);
+  border: 1px solid var(--gray-border); overflow: hidden; margin-bottom: 20px;
+}
+.tscroll { overflow-y: auto; max-height: 360px; }
+.tscroll::-webkit-scrollbar { width: 4px; }
+.tscroll::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 2px; }
+table  { border-collapse: collapse; width: 100%; }
+thead th {
+  padding: 9px 12px; background: var(--gray-light);
+  font-size: 11px; font-weight: 600; color: var(--gray); text-transform: uppercase; letter-spacing: .5px;
+  text-align: left; white-space: nowrap; border-bottom: 1px solid var(--gray-border);
+  position: sticky; top: 0; z-index: 1;
+}
+tbody tr { border-bottom: 1px solid var(--gray-border); }
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: #FAFAFA; }
+tbody td { padding: 10px 12px; font-size: 13px; vertical-align: middle; }
+td.right, th.right { text-align: right; }
+td.center, th.center { text-align: center; }
+
+/* ─── Progress Bar (inline) ──────────────────────────────────────────────────── */
+.prog-wrap { display: flex; align-items: center; gap: 8px; }
+.prog-track { flex: 1; height: 6px; background: var(--gray-light); border-radius: 3px; overflow: hidden; }
+.prog-fill { height: 100%; border-radius: 3px; }
+.prog-val { font-size: 11px; font-weight: 700; width: 34px; text-align: right; }
+
+/* ─── Status Badges ──────────────────────────────────────────────────────────── */
+.sb { display: inline-block; padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.sb-green  { background: var(--green-bg); color: #166534; }
+.sb-yellow { background: #FEF9C3; color: #854D0E; }
+.sb-red    { background: #FEE2E2; color: #991B1B; }
+.sb-blue   { background: #DBEAFE; color: #1D4ED8; }
+.sb-purple { background: var(--purple-bg); color: #5B21B6; }
+.sb-gray   { background: var(--gray-light); color: #374151; }
+.sb-teal   { background: var(--teal-bg); color: var(--teal); }
+
+/* ─── Funnel Steps ───────────────────────────────────────────────────────────── */
+.funnel-step {
+  background: #fff; border: 1px solid var(--gray-border); border-radius: 10px;
+  padding: 16px 18px; margin-bottom: 8px; display: flex; align-items: center; gap: 14px;
+  box-shadow: var(--shadow);
+}
+.funnel-icon {
+  width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center;
+  justify-content: center; font-size: 14px; flex-shrink: 0;
+}
+.funnel-info { flex: 1; }
+.funnel-label { font-size: 13px; font-weight: 600; }
+.funnel-sub   { font-size: 11px; color: var(--gray); margin-top: 2px; }
+.funnel-count { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+.funnel-conv  { font-size: 11px; color: var(--gray); }
+.funnel-bar   { flex: 1; }
+
+/* ─── Gauge ──────────────────────────────────────────────────────────────────── */
+.gauge-wrap { display: flex; flex-direction: column; align-items: center; padding: 8px 0 4px; }
+.gauge-label { font-size: 13px; font-weight: 600; margin-top: 8px; }
+.gauge-sub   { font-size: 11px; color: var(--gray); }
+
+/* ─── Score Ring ─────────────────────────────────────────────────────────────── */
+.ring-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; }
+.ring-item { text-align: center; padding: 14px 10px; }
+.ring-label { font-size: 11px; color: var(--gray); font-weight: 600; margin-top: 6px; text-transform: uppercase; letter-spacing: .4px; }
+.ring-score { font-size: 12px; color: var(--gray); }
+
+/* ─── Diversity Highlight ────────────────────────────────────────────────────── */
+.div-highlight {
+  background: linear-gradient(135deg, #111 0%, #1a1a2e 100%);
+  border-radius: var(--radius); padding: 24px; color: #fff;
+  display: flex; align-items: center; gap: 20px; margin-bottom: 20px;
+}
+.div-highlight-num { font-size: 52px; font-weight: 800; color: var(--yellow); line-height: 1; flex-shrink: 0; }
+.div-highlight-info h3 { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+.div-highlight-info p  { font-size: 12px; color: #9CA3AF; line-height: 1.6; }
+
+/* ─── Gender Bar ─────────────────────────────────────────────────────────────── */
+.gender-bar-wrap { margin: 14px 0 8px; }
+.gender-bar {
+  height: 24px; border-radius: 6px; overflow: hidden; display: flex;
+  background: var(--gray-light); position: relative;
+}
+.gender-seg { height: 100%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff; transition: width .6s; }
+.gender-labels { display: flex; margin-top: 6px; font-size: 11px; gap: 16px; }
+.gender-lbl { display: flex; align-items: center; gap: 5px; color: var(--gray); }
+.gender-lbl-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+/* ─── Stacked Bar ────────────────────────────────────────────────────────────── */
+.stacked-bar { height: 14px; border-radius: 7px; overflow: hidden; display: flex; background: var(--gray-light); margin: 4px 0 3px; }
+.stacked-seg { height: 100%; }
+
+/* ─── Trend Chip ─────────────────────────────────────────────────────────────── */
+.trend-up   { color: var(--green); font-size: 11px; font-weight: 700; }
+.trend-down { color: var(--red);   font-size: 11px; font-weight: 700; }
+.trend-flat { color: var(--gray);  font-size: 11px; font-weight: 700; }
+
+/* ─── Spacer ─────────────────────────────────────────────────────────────────── */
+.spacer16 { height: 16px; }
+.spacer20 { height: 20px; }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════ HEADER -->
+<header class="site-header">
+  <div class="header-inner">
+    <div class="parasol-logo"></div>
+    <div class="header-titles">
+      <h1>HR Dashboard — People &amp; Organization</h1>
+      <div class="subtitle">Parasol · <span id="hdr-headcount">847</span> employees · As of May 2026</div>
+    </div>
+    <div class="header-pills">
+      <span class="pill"><b>847</b> Headcount</span>
+      <span class="pill"><b>38%</b> Women in Leadership</span>
+      <span class="pill">eNPS <b>+32</b></span>
+    </div>
+    <div class="header-right">
+      <span class="updated-time">Updated May 2, 2026</span>
+      <a class="back-btn" href="/">← Sales Dashboard</a>
+    </div>
+  </div>
+</header>
+
+<!-- ══════════════════════════════════════════════════ TABS -->
+<nav class="tabs-bar">
+  <div class="tabs-inner">
+    <button class="tab-btn active" onclick="switchTab(0)">📊 Overview</button>
+    <button class="tab-btn"        onclick="switchTab(1)">👥 Workforce</button>
+    <button class="tab-btn"        onclick="switchTab(2)">🌈 Diversity &amp; Inclusion</button>
+    <button class="tab-btn"        onclick="switchTab(3)">🎯 Talent Acquisition</button>
+    <button class="tab-btn"        onclick="switchTab(4)">📉 Retention &amp; Attrition</button>
+    <button class="tab-btn"        onclick="switchTab(5)">⭐ Engagement &amp; Performance</button>
+  </div>
+</nav>
+
+<!-- ══════════════════════════════════════════════════ PANELS -->
+
+<!-- ─── Tab 0: Overview ────────────────────────────────────────────────────── -->
+<div class="tab-panel active" id="panel-0">
+
+  <div class="alert-bar">
+    <div class="blink-dot green"></div>
+    <div>Org headcount: <strong>847 employees</strong> &nbsp;·&nbsp;
+      New hires YTD: <strong>124</strong> &nbsp;·&nbsp;
+      Attrition YTD: <strong>8.6%</strong> (↓ vs 10.1% prior year) &nbsp;·&nbsp;
+      <strong>38</strong> open requisitions &nbsp;·&nbsp; eNPS: <strong>+32</strong>
+    </div>
+  </div>
+
+  <!-- KPI Row 1 -->
+  <div class="kpi-grid" style="margin-bottom:16px">
+    <div class="kpi-card red">
+      <div class="kpi-label">Total Headcount</div>
+      <div class="kpi-value">847</div>
+      <div class="kpi-sub">Full-time: 791 · Part-time: 56</div>
+      <div class="kpi-tag red">↑ +47 YoY</div>
+    </div>
+    <div class="kpi-card blue">
+      <div class="kpi-label">New Hires YTD</div>
+      <div class="kpi-value">124</div>
+      <div class="kpi-sub">Jan–Apr 2026 · 31/mo avg</div>
+      <div class="kpi-tag blue">Q1: 91 · Q2 so far: 33</div>
+    </div>
+    <div class="kpi-card green">
+      <div class="kpi-label">YTD Attrition Rate</div>
+      <div class="kpi-value">8.6%</div>
+      <div class="kpi-sub">73 departures · ↓ vs 10.1% LY</div>
+      <div class="kpi-tag green">↓ Improving</div>
+    </div>
+    <div class="kpi-card yellow">
+      <div class="kpi-label">Open Requisitions</div>
+      <div class="kpi-value">38</div>
+      <div class="kpi-sub">Avg 34 days to fill</div>
+      <div class="kpi-tag yellow">12 critical roles</div>
+    </div>
+  </div>
+
+  <!-- KPI Row 2 -->
+  <div class="kpi-grid" style="margin-bottom:24px">
+    <div class="kpi-card purple">
+      <div class="kpi-label">Engagement Score</div>
+      <div class="kpi-value">74%</div>
+      <div class="kpi-sub">Based on Q1 2026 survey</div>
+      <div class="kpi-tag purple">↑ +3pts QoQ</div>
+    </div>
+    <div class="kpi-card pink">
+      <div class="kpi-label">eNPS</div>
+      <div class="kpi-value">+32</div>
+      <div class="kpi-sub">57% promoters · 25% detractors</div>
+      <div class="kpi-tag pink">Good</div>
+    </div>
+    <div class="kpi-card teal">
+      <div class="kpi-label">Women in Leadership</div>
+      <div class="kpi-value">38%</div>
+      <div class="kpi-sub">Director+ roles · Target: 45%</div>
+      <div class="kpi-tag teal">↑ +4pts YoY</div>
+    </div>
+    <div class="kpi-card black">
+      <div class="kpi-label">Avg Employee Tenure</div>
+      <div class="kpi-value sm">3.4 yrs</div>
+      <div class="kpi-sub">Median: 2.1 yrs</div>
+      <div class="kpi-tag black">↑ Stable</div>
+    </div>
+  </div>
+
+  <!-- Metric row (dark cards) -->
+  <div class="g3" style="margin-bottom:24px">
+    <div class="metric-card">
+      <div class="metric-pct">$312K</div>
+      <div class="metric-label">Revenue per Employee</div>
+      <div class="metric-sub">↑ +8% vs prior year</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-pct">1 : 72</div>
+      <div class="metric-label">HR Headcount Ratio</div>
+      <div class="metric-sub">12 HR staff · Benchmark: 1:80</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-pct">28%</div>
+      <div class="metric-label">Internal Fill Rate</div>
+      <div class="metric-sub">Promotions + lateral moves</div>
+    </div>
+  </div>
+
+  <!-- Charts row -->
+  <div class="g2">
+    <div class="chart-card">
+      <div class="chart-title">Headcount by Department</div>
+      <div id="overview-dept-bars"></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Monthly Headcount Trend — 2025–2026</div>
+      <canvas id="hc-trend-chart" style="width:100%;height:200px;display:block"></canvas>
+      <div style="display:flex;gap:16px;margin-top:8px;font-size:11px;color:var(--gray)">
+        <span><span style="display:inline-block;width:10px;height:10px;background:var(--red);border-radius:2px;margin-right:4px"></span>Total HC</span>
+        <span style="border-bottom:2px dashed var(--blue);padding-bottom:1px">Hires (monthly)</span>
+        <span style="border-bottom:2px dashed var(--orange);padding-bottom:1px">Exits (monthly)</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ─── Tab 1: Workforce Analytics ────────────────────────────────────────── -->
+<div class="tab-panel" id="panel-1">
+
+  <div class="alert-bar blue">
+    <div class="blink-dot" style="background:var(--yellow)"></div>
+    <div>
+      <strong>791</strong> full-time · <strong>56</strong> part-time ·
+      <strong>43%</strong> remote/hybrid · Fastest-growing dept: <strong>Engineering (+18 YTD)</strong>
+    </div>
+  </div>
+
+  <div class="kpi-grid" style="margin-bottom:24px">
+    <div class="kpi-card red">
+      <div class="kpi-label">Total Headcount</div>
+      <div class="kpi-value">847</div>
+      <div class="kpi-sub">↑ +47 vs Jan 2025</div>
+    </div>
+    <div class="kpi-card blue">
+      <div class="kpi-label">Full-Time %</div>
+      <div class="kpi-value">93.4%</div>
+      <div class="kpi-sub">791 FT · 56 PT</div>
+    </div>
+    <div class="kpi-card green">
+      <div class="kpi-label">Remote / Hybrid</div>
+      <div class="kpi-value">43%</div>
+      <div class="kpi-sub">364 employees</div>
+    </div>
+    <div class="kpi-card yellow">
+      <div class="kpi-label">Avg Tenure</div>
+      <div class="kpi-value sm">3.4 yrs</div>
+      <div class="kpi-sub">Median: 2.1 yrs</div>
+    </div>
+  </div>
+
+  <div class="g2" style="margin-bottom:20px">
+    <!-- Dept table -->
+    <div class="table-wrap">
+      <div class="section-head">
+        <span class="section-title">Headcount by Department</span>
+        <span class="section-badge">10 departments</span>
+      </div>
+      <div class="tscroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Department</th>
+              <th class="right">HC</th>
+              <th class="right">YTD Hires</th>
+              <th class="right">Open Reqs</th>
+              <th class="right">Attrition</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="dept-table-body"></tbody>
+        </table>
+      </div>
+    </div>
+    <!-- Work arrangement -->
+    <div class="chart-card">
+      <div class="chart-title">Work Arrangement</div>
+      <div class="donut-wrap">
+        <canvas id="work-arrangement-donut" width="160" height="160" style="flex-shrink:0"></canvas>
+        <div class="donut-legend" id="work-arrangement-legend"></div>
+      </div>
+      <div style="height:24px"></div>
+      <div class="chart-title">Employment Type</div>
+      <div class="donut-wrap">
+        <canvas id="emp-type-donut" width="160" height="160" style="flex-shrink:0"></canvas>
+        <div class="donut-legend" id="emp-type-legend"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="g2">
+    <div class="chart-card">
+      <div class="chart-title">Tenure Distribution</div>
+      <canvas id="tenure-chart" style="width:100%;height:180px;display:block"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Age Demographics</div>
+      <div class="donut-wrap">
+        <canvas id="age-donut" width="160" height="160" style="flex-shrink:0"></canvas>
+        <div class="donut-legend" id="age-legend"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ─── Tab 2: Diversity & Inclusion ──────────────────────────────────────── -->
+<div class="tab-panel" id="panel-2">
+
+  <div class="alert-bar" style="background:linear-gradient(135deg,#7C3AED,#4F46E5)">
+    <div class="blink-dot" style="background:var(--yellow)"></div>
+    <div>
+      Gender parity: <strong>46% women overall</strong> · Women in leadership: <strong>38%</strong> ·
+      Underrepresented minorities in workforce: <strong>28%</strong> · Pay equity ratio (women:men): <strong>0.97</strong>
+    </div>
+  </div>
+
+  <!-- Gender overview highlight -->
+  <div class="div-highlight">
+    <div class="div-highlight-num">46%</div>
+    <div class="div-highlight-info">
+      <h3>Women in the Workforce</h3>
+      <p>389 women, 440 men, 18 non-binary/other across 847 total employees.<br>
+         Target: 50% gender parity by 2027. Currently tracking ahead of plan.</p>
+    </div>
+    <div style="flex:1;max-width:300px">
+      <div style="font-size:11px;color:#9CA3AF;margin-bottom:8px;font-weight:600;text-transform:uppercase;letter-spacing:.6px">Gender Distribution</div>
+      <div class="gender-bar">
+        <div class="gender-seg" style="width:52%;background:#1B9BF0">52%</div>
+        <div class="gender-seg" style="width:46%;background:#E8231A">46%</div>
+        <div class="gender-seg" style="width:2%;background:#F5C800"></div>
+      </div>
+      <div class="gender-labels" style="margin-top:8px">
+        <span class="gender-lbl"><span class="gender-lbl-dot" style="background:#1B9BF0"></span>Men 52%</span>
+        <span class="gender-lbl"><span class="gender-lbl-dot" style="background:#E8231A"></span>Women 46%</span>
+        <span class="gender-lbl"><span class="gender-lbl-dot" style="background:#F5C800"></span>Other 2%</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Women in leadership by level -->
+  <div class="g2" style="margin-bottom:20px">
+    <div class="chart-card">
+      <div class="chart-title">Women in Leadership — By Level</div>
+      <div class="chart-subtitle">% of women at each seniority level · Target: 45% for Director+</div>
+      <div id="women-leadership-bars"></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Ethnic &amp; Racial Diversity</div>
+      <div class="donut-wrap">
+        <canvas id="ethnicity-donut" width="160" height="160" style="flex-shrink:0"></canvas>
+        <div class="donut-legend" id="ethnicity-legend"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- D&I KPIs -->
+  <div class="kpi-grid" style="margin-bottom:24px">
+    <div class="kpi-card purple">
+      <div class="kpi-label">Women — Overall</div>
+      <div class="kpi-value">46%</div>
+      <div class="kpi-sub">389 of 847 employees</div>
+      <div class="kpi-tag purple">↑ +2pts YoY</div>
+    </div>
+    <div class="kpi-card pink">
+      <div class="kpi-label">Women in Leadership</div>
+      <div class="kpi-value">38%</div>
+      <div class="kpi-sub">Director+ · Target: 45%</div>
+      <div class="kpi-tag pink">↑ +4pts YoY</div>
+    </div>
+    <div class="kpi-card teal">
+      <div class="kpi-label">Women — Senior VP+</div>
+      <div class="kpi-value">31%</div>
+      <div class="kpi-sub">SVP, EVP, C-Suite</div>
+      <div class="kpi-tag teal">↑ +2pts YoY</div>
+    </div>
+    <div class="kpi-card blue">
+      <div class="kpi-label">Board Gender Diversity</div>
+      <div class="kpi-value">44%</div>
+      <div class="kpi-sub">4 of 9 board seats</div>
+      <div class="kpi-tag blue">Above target</div>
+    </div>
+  </div>
+
+  <div class="g2">
+    <div class="chart-card">
+      <div class="chart-title">Pay Equity — Women : Men Ratio by Level</div>
+      <div id="pay-equity-bars"></div>
+      <div style="margin-top:14px;padding:10px 12px;background:#F0FDF4;border-radius:8px;font-size:12px;color:#166534">
+        ✓ All levels within 3% — Full pay equity audit completed Q4 2025
+      </div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">D&amp;I Trend — Women in Leadership</div>
+      <canvas id="di-trend-chart" style="width:100%;height:200px;display:block"></canvas>
+      <div style="margin-top:8px;font-size:11px;color:var(--gray);display:flex;gap:14px">
+        <span><span style="display:inline-block;width:10px;height:10px;background:var(--red);border-radius:2px;margin-right:3px"></span>Women in Leadership %</span>
+        <span style="border-bottom:2px dashed #7C3AED;padding-bottom:1px">Target</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="spacer20"></div>
+
+  <!-- Diversity by dept table -->
+  <div class="table-wrap">
+    <div class="section-head">
+      <span class="section-title">Gender Diversity by Department</span>
+      <span class="section-badge">10 departments</span>
+    </div>
+    <div class="tscroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Department</th>
+            <th class="right">Total HC</th>
+            <th class="right">Women #</th>
+            <th class="right">Women %</th>
+            <th>Gender Split</th>
+            <th>vs Target</th>
+          </tr>
+        </thead>
+        <tbody id="gender-dept-table"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- ─── Tab 3: Talent Acquisition ─────────────────────────────────────────── -->
+<div class="tab-panel" id="panel-3">
+
+  <div class="alert-bar green">
+    <div class="blink-dot green"></div>
+    <div>
+      <strong>38</strong> open roles · Avg time to fill: <strong>34 days</strong> ·
+      Offer acceptance rate: <strong>87%</strong> · Internal fill rate: <strong>28%</strong> ·
+      YTD hires: <strong>124</strong>
+    </div>
+  </div>
+
+  <div class="kpi-grid" style="margin-bottom:24px">
+    <div class="kpi-card red">
+      <div class="kpi-label">Open Requisitions</div>
+      <div class="kpi-value">38</div>
+      <div class="kpi-sub">12 critical · 26 standard</div>
+      <div class="kpi-tag red">12 critical</div>
+    </div>
+    <div class="kpi-card blue">
+      <div class="kpi-label">Avg Time to Fill</div>
+      <div class="kpi-value sm">34 days</div>
+      <div class="kpi-sub">↓ vs 41 days LY</div>
+      <div class="kpi-tag blue">↓ Improving</div>
+    </div>
+    <div class="kpi-card green">
+      <div class="kpi-label">Avg Time to Hire</div>
+      <div class="kpi-value sm">22 days</div>
+      <div class="kpi-sub">From offer to start date</div>
+      <div class="kpi-tag green">On track</div>
+    </div>
+    <div class="kpi-card yellow">
+      <div class="kpi-label">Cost per Hire</div>
+      <div class="kpi-value sm">$4,200</div>
+      <div class="kpi-sub">↓ vs $5,100 LY</div>
+      <div class="kpi-tag yellow">↓ -18%</div>
+    </div>
+  </div>
+
+  <div class="g2" style="margin-bottom:20px">
+    <!-- Hiring funnel -->
+    <div class="chart-card">
+      <div class="chart-title">Hiring Funnel — YTD 2026</div>
+      <div id="hiring-funnel"></div>
+    </div>
+    <!-- Monthly hires chart -->
+    <div class="chart-card">
+      <div class="chart-title">Monthly Hires vs Exits — 2025–2026</div>
+      <canvas id="hires-exits-chart" style="width:100%;height:200px;display:block"></canvas>
+      <div style="margin-top:8px;font-size:11px;color:var(--gray);display:flex;gap:14px">
+        <span><span style="display:inline-block;width:10px;height:10px;background:var(--green);border-radius:2px;margin-right:3px"></span>Hires</span>
+        <span><span style="display:inline-block;width:10px;height:10px;background:var(--red);border-radius:2px;margin-right:3px"></span>Exits</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="g2">
+    <div class="chart-card">
+      <div class="chart-title">Source of Hire</div>
+      <div class="donut-wrap">
+        <canvas id="source-donut" width="160" height="160" style="flex-shrink:0"></canvas>
+        <div class="donut-legend" id="source-legend"></div>
+      </div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Open Roles by Department</div>
+      <div id="open-roles-bars"></div>
+    </div>
+  </div>
+
+  <div class="spacer20"></div>
+
+  <!-- Open roles table -->
+  <div class="table-wrap">
+    <div class="section-head">
+      <span class="section-title">Open Requisitions</span>
+      <span class="section-badge">38 open</span>
+    </div>
+    <div class="tscroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Role</th>
+            <th>Department</th>
+            <th>Level</th>
+            <th class="right">Days Open</th>
+            <th class="right">Candidates</th>
+            <th>Priority</th>
+          </tr>
+        </thead>
+        <tbody id="open-roles-table"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- ─── Tab 4: Retention & Attrition ──────────────────────────────────────── -->
+<div class="tab-panel" id="panel-4">
+
+  <div class="alert-bar" style="background:#991B1B">
+    <div class="blink-dot" style="background:#FCA5A5"></div>
+    <div>
+      YTD attrition: <strong>8.6%</strong> (↓ vs 10.1% LY) ·
+      Voluntary: <strong>10.8%</strong> annualized · Regrettable attrition: <strong>6.2%</strong> ·
+      <strong>Engineering</strong> highest risk dept
+    </div>
+  </div>
+
+  <div class="kpi-grid" style="margin-bottom:24px">
+    <div class="kpi-card red">
+      <div class="kpi-label">YTD Attrition Rate</div>
+      <div class="kpi-value">8.6%</div>
+      <div class="kpi-sub">73 exits · ↓ vs 10.1% LY</div>
+      <div class="kpi-tag green">↓ Improving</div>
+    </div>
+    <div class="kpi-card yellow">
+      <div class="kpi-label">Voluntary Turnover</div>
+      <div class="kpi-value">10.8%</div>
+      <div class="kpi-sub">Annualized · 54 voluntary exits</div>
+      <div class="kpi-tag yellow">Monitor</div>
+    </div>
+    <div class="kpi-card blue">
+      <div class="kpi-label">Involuntary Turnover</div>
+      <div class="kpi-value">3.4%</div>
+      <div class="kpi-sub">19 exits YTD</div>
+      <div class="kpi-tag blue">Within norm</div>
+    </div>
+    <div class="kpi-card red">
+      <div class="kpi-label">Regrettable Attrition</div>
+      <div class="kpi-value">6.2%</div>
+      <div class="kpi-sub">High-performer exits</div>
+      <div class="kpi-tag red">Action needed</div>
+    </div>
+  </div>
+
+  <div class="g2" style="margin-bottom:20px">
+    <div class="chart-card">
+      <div class="chart-title">Attrition by Department — YTD</div>
+      <div id="attrition-dept-bars"></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Exit Reasons Breakdown</div>
+      <div class="donut-wrap">
+        <canvas id="exit-reasons-donut" width="160" height="160" style="flex-shrink:0"></canvas>
+        <div class="donut-legend" id="exit-reasons-legend"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="g2">
+    <div class="chart-card">
+      <div class="chart-title">Monthly Attrition Rate Trend</div>
+      <canvas id="attrition-trend-chart" style="width:100%;height:200px;display:block"></canvas>
+      <div style="margin-top:8px;font-size:11px;color:var(--gray);display:flex;gap:14px">
+        <span><span style="display:inline-block;width:10px;height:10px;background:var(--red);border-radius:2px;margin-right:3px"></span>Monthly attrition %</span>
+        <span style="border-bottom:2px dashed var(--blue);padding-bottom:1px">12-mo rolling avg</span>
+      </div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Tenure at Departure</div>
+      <canvas id="tenure-departure-chart" style="width:100%;height:200px;display:block"></canvas>
+    </div>
+  </div>
+
+  <div class="spacer20"></div>
+
+  <!-- Flight risk table -->
+  <div class="table-wrap">
+    <div class="section-head">
+      <span class="section-title">Retention Risk Analysis by Department</span>
+      <span class="section-badge">10 departments</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Department</th>
+          <th class="right">HC</th>
+          <th class="right">YTD Exits</th>
+          <th class="right">Attrition %</th>
+          <th class="right">Avg Tenure</th>
+          <th>Flight Risk</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="flight-risk-table"></tbody>
+    </table>
+  </div>
+
+</div>
+
+<!-- ─── Tab 5: Engagement & Performance ───────────────────────────────────── -->
+<div class="tab-panel" id="panel-5">
+
+  <div class="alert-bar" style="background:#1D4ED8">
+    <div class="blink-dot" style="background:var(--yellow)"></div>
+    <div>
+      Q1 2026 engagement survey: <strong>74%</strong> engaged · eNPS: <strong>+32</strong> ·
+      Training completion: <strong>81%</strong> · Internal promotion rate: <strong>12.4%</strong>
+    </div>
+  </div>
+
+  <div class="kpi-grid" style="margin-bottom:24px">
+    <div class="kpi-card purple">
+      <div class="kpi-label">Engagement Score</div>
+      <div class="kpi-value">74%</div>
+      <div class="kpi-sub">Q1 2026 · ↑ +3pts QoQ</div>
+      <div class="kpi-tag purple">↑ Trending up</div>
+    </div>
+    <div class="kpi-card blue">
+      <div class="kpi-label">eNPS</div>
+      <div class="kpi-value">+32</div>
+      <div class="kpi-sub">57% promoters · 25% detractors</div>
+      <div class="kpi-tag blue">Good</div>
+    </div>
+    <div class="kpi-card green">
+      <div class="kpi-label">Training Completion</div>
+      <div class="kpi-value">81%</div>
+      <div class="kpi-sub">Required courses YTD</div>
+      <div class="kpi-tag green">On track</div>
+    </div>
+    <div class="kpi-card yellow">
+      <div class="kpi-label">Internal Promotion Rate</div>
+      <div class="kpi-value">12.4%</div>
+      <div class="kpi-sub">105 internal promotions YTD</div>
+      <div class="kpi-tag yellow">↑ +2pts YoY</div>
+    </div>
+  </div>
+
+  <div class="g2" style="margin-bottom:20px">
+    <!-- eNPS gauge -->
+    <div class="chart-card">
+      <div class="chart-title">eNPS Breakdown — Q1 2026</div>
+      <div id="enps-bars"></div>
+      <div style="margin-top:14px;padding:12px 14px;background:var(--gray-light);border-radius:8px;font-size:12px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+          <span style="font-weight:600">eNPS Score</span>
+          <span style="font-weight:800;font-size:16px;color:var(--blue)">+32</span>
+        </div>
+        <div style="color:var(--gray)">Formula: % Promoters (9–10) minus % Detractors (0–6)</div>
+        <div style="color:var(--gray)">57% promoters − 25% detractors = +32</div>
+      </div>
+    </div>
+    <!-- Engagement trend -->
+    <div class="chart-card">
+      <div class="chart-title">Engagement Score Trend — 2024–2026</div>
+      <canvas id="engagement-trend-chart" style="width:100%;height:200px;display:block"></canvas>
+      <div style="margin-top:8px;font-size:11px;color:var(--gray);display:flex;gap:14px">
+        <span><span style="display:inline-block;width:10px;height:10px;background:var(--purple);border-radius:2px;margin-right:3px"></span>Engagement %</span>
+        <span style="border-bottom:2px dashed var(--gray);padding-bottom:1px">Industry Benchmark (72%)</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="g2">
+    <div class="chart-card">
+      <div class="chart-title">Performance Ratings Distribution — 2025</div>
+      <canvas id="perf-ratings-chart" style="width:100%;height:200px;display:block"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Engagement Score by Department</div>
+      <div id="engagement-dept-bars"></div>
+    </div>
+  </div>
+
+  <div class="spacer20"></div>
+
+  <!-- Engagement by dept table -->
+  <div class="table-wrap">
+    <div class="section-head">
+      <span class="section-title">Employee Development Summary by Department</span>
+      <span class="section-badge">10 departments</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Department</th>
+          <th class="right">HC</th>
+          <th class="right">Engagement %</th>
+          <th class="right">Training Compl.</th>
+          <th class="right">Promotions</th>
+          <th class="right">Avg Rating</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="engagement-dept-table"></tbody>
+    </table>
+  </div>
+
+</div>
+
+<script>
+'use strict';
+
+// ─── Mock Data ─────────────────────────────────────────────────────────────────
+const DEPTS = [
+  { name: 'Engineering',      hc: 198, hires: 28, openReqs: 12, exits: 19, avgTenure: 2.8, womenPct: 32, engScore: 71, trainPct: 78, promos: 24, avgRating: 3.8, attrPct: 9.6 },
+  { name: 'Sales',            hc: 142, hires: 22, openReqs:  6, exits: 16, avgTenure: 2.1, womenPct: 44, engScore: 76, trainPct: 83, promos: 18, avgRating: 3.6, attrPct: 11.3 },
+  { name: 'Customer Success', hc: 128, hires: 19, openReqs:  4, exits: 12, avgTenure: 3.1, womenPct: 61, engScore: 80, trainPct: 91, promos: 16, avgRating: 4.0, attrPct: 9.4 },
+  { name: 'Product',          hc: 74,  hires: 11, openReqs:  5, exits:  7, avgTenure: 3.4, womenPct: 42, engScore: 78, trainPct: 86, promos:  9, avgRating: 3.9, attrPct: 9.5 },
+  { name: 'Marketing',        hc: 68,  hires:  9, openReqs:  3, exits:  6, avgTenure: 2.9, womenPct: 59, engScore: 74, trainPct: 82, promos:  8, avgRating: 3.7, attrPct: 8.8 },
+  { name: 'Finance',          hc: 52,  hires:  6, openReqs:  2, exits:  4, avgTenure: 4.8, womenPct: 48, engScore: 73, trainPct: 88, promos:  6, avgRating: 3.8, attrPct: 7.7 },
+  { name: 'People (HR)',      hc: 42,  hires:  5, openReqs:  2, exits:  3, avgTenure: 3.7, womenPct: 71, engScore: 82, trainPct: 95, promos:  5, avgRating: 4.1, attrPct: 7.1 },
+  { name: 'Legal & Comp.',    hc: 38,  hires:  4, openReqs:  1, exits:  2, avgTenure: 5.2, womenPct: 53, engScore: 70, trainPct: 92, promos:  4, avgRating: 3.7, attrPct: 5.3 },
+  { name: 'Operations',       hc: 62,  hires:  9, openReqs:  2, exits:  4, avgTenure: 3.2, womenPct: 40, engScore: 72, trainPct: 80, promos:  8, avgRating: 3.6, attrPct: 6.5 },
+  { name: 'Design',           hc: 43,  hires:  6, openReqs:  1, exits:  3, avgTenure: 2.6, womenPct: 55, engScore: 77, trainPct: 84, promos:  5, avgRating: 3.9, attrPct: 7.0 },
+  { name: 'Executive',        hc: 6,   hires:  0, openReqs:  0, exits:  0, avgTenure: 6.1, womenPct: 33, engScore: 85, trainPct: 100,promos:  0, avgRating: 4.4, attrPct: 0.0 },
+];
+
+const HC_TREND = {
+  months: ['May','Jun','Jul','Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar','Apr','May'],
+  hc:     [800,  806,  812,  818,  822,  825,  830,  828,  832,  838,  841,  844,  847],
+  hires:  [28,   24,   22,   18,   16,   20,   24,   14,   18,   22,   28,   24,   26],
+  exits:  [14,   12,   16,    8,   12,   14,   18,   16,   14,   12,   10,    8,    6],
+};
+
+const ATTRITION_TREND = {
+  months: ['May','Jun','Jul','Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar','Apr'],
+  rate:   [1.75, 1.49, 1.97, 0.98, 1.46, 1.70, 2.17, 1.93, 1.68, 1.43, 1.19, 0.95],
+  rolling:[1.62, 1.58, 1.61, 1.55, 1.53, 1.56, 1.60, 1.64, 1.61, 1.56, 1.49, 1.41],
+};
+
+const DI_TREND = {
+  years: ['2021','2022','2023','2024','2025','2026'],
+  actual:[26,     29,    31,    34,    34,    38],
+  target:[28,     30,    33,    36,    40,    45],
+};
+
+const ENGAGEMENT_TREND = {
+  quarters: ['Q1\'24','Q2\'24','Q3\'24','Q4\'24','Q1\'25','Q2\'25','Q3\'25','Q4\'25','Q1\'26'],
+  score:    [64,       66,      67,      69,       70,      71,      72,      71,      74],
+  benchmark: 72,
+};
+
+const OPEN_ROLES = [
+  { role: 'Senior Software Engineer',     dept: 'Engineering',      level: 'Senior',    days: 48, candidates: 34, priority: 'Critical' },
+  { role: 'Staff Engineer, Platform',     dept: 'Engineering',      level: 'Staff',     days: 62, candidates: 18, priority: 'Critical' },
+  { role: 'Product Manager, Growth',      dept: 'Product',          level: 'Mid',       days: 29, candidates: 41, priority: 'High' },
+  { role: 'Account Executive (x3)',       dept: 'Sales',            level: 'Mid',       days: 21, candidates: 82, priority: 'Critical' },
+  { role: 'Customer Success Manager',     dept: 'Customer Success', level: 'Mid',       days: 17, candidates: 56, priority: 'High' },
+  { role: 'Data Engineer',                dept: 'Engineering',      level: 'Mid',       days: 35, candidates: 27, priority: 'High' },
+  { role: 'Director of Demand Gen',       dept: 'Marketing',        level: 'Director',  days: 44, candidates: 22, priority: 'High' },
+  { role: 'Financial Analyst',            dept: 'Finance',          level: 'Mid',       days: 26, candidates: 38, priority: 'Standard' },
+  { role: 'HR Business Partner',          dept: 'People (HR)',      level: 'Senior',    days: 19, candidates: 29, priority: 'Standard' },
+  { role: 'UX Designer',                  dept: 'Design',           level: 'Mid',       days: 31, candidates: 44, priority: 'Standard' },
+];
+
+// ─── Utilities ──────────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+
+function hbar(containerId, rows) {
+  const max = Math.max(...rows.map(r => r.value), 1);
+  const el  = $(containerId);
+  if (!el) return;
+  el.innerHTML = rows.map(r => {
+    const pct = Math.round((r.value / max) * 100);
+    const sub = r.sub ? ` <span style="color:var(--gray);font-weight:400">${r.sub}</span>` : '';
+    return `<div class="hbar-row">
+      <div class="hbar-meta">
+        <span class="hbar-lbl">${r.label}${sub}</span>
+        <span class="hbar-cnt">${r.display || r.value}</span>
+      </div>
+      <div class="hbar-track">
+        <div class="hbar-fill" style="width:${pct}%;background:${r.color}"></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function drawDonut(canvasId, segments, centerLabel) {
+  const canvas = $(canvasId);
+  if (!canvas) return;
+  const size = 160;
+  canvas.width  = size;
+  canvas.height = size;
+  const ctx   = canvas.getContext('2d');
+  const total = segments.reduce((s, seg) => s + seg.value, 0);
+  if (total === 0) return;
+  let angle = -Math.PI / 2;
+  for (const seg of segments) {
+    const slice = (seg.value / total) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(size/2, size/2);
+    ctx.arc(size/2, size/2, size/2 - 6, angle, angle + slice);
+    ctx.closePath();
+    ctx.fillStyle = seg.color;
+    ctx.fill();
+    angle += slice;
+  }
+  ctx.beginPath();
+  ctx.arc(size/2, size/2, size/2 - 34, 0, Math.PI*2);
+  ctx.fillStyle = '#fff';
+  ctx.fill();
+  if (centerLabel) {
+    ctx.fillStyle = '#111';
+    ctx.font = 'bold 13px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(centerLabel, size/2, size/2);
+  }
+}
+
+function donutLegend(containerId, segments) {
+  const total = segments.reduce((s, seg) => s + seg.value, 0) || 1;
+  const el = $(containerId);
+  if (!el) return;
+  el.innerHTML = segments.map(s => `
+    <div class="legend-item">
+      <div class="legend-dot" style="background:${s.color}"></div>
+      <span class="legend-lbl">${s.label}</span>
+      <span class="legend-val">${s.display || s.value}</span>
+      <span class="legend-pct">${Math.round(s.value/total*100)}%</span>
+    </div>`).join('');
+}
+
+function drawBarChart(canvasId, labels, values, colors, opts = {}) {
+  const canvas = $(canvasId);
+  if (!canvas) return;
+  const W = canvas.offsetWidth || 500;
+  const H = opts.height || 200;
+  canvas.width  = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+
+  const maxV  = Math.max(...values.flat ? values.flat() : values, 1);
+  const padL  = 10, padR = 10, padT = 16, padB = 32;
+  const chartW = W - padL - padR;
+  const chartH = H - padT - padB;
+  const n     = labels.length;
+  const barW  = Math.max(4, Math.floor(chartW / n) - 4);
+
+  (Array.isArray(values[0]) ? values : [values]).forEach((series, si) => {
+    const color = Array.isArray(colors) ? (typeof colors[0] === 'string' ? colors[si] || colors[0] : colors[si]) : colors;
+    series.forEach((v, i) => {
+      const x = padL + i * (chartW / n) + (chartW / n - barW) / 2;
+      const h = (v / maxV) * chartH;
+      const y = padT + chartH - h;
+      ctx.fillStyle = typeof color === 'string' ? color : (color[i] || '#E8231A');
+      ctx.fillRect(x, y, barW, h);
+    });
+  });
+
+  // X labels
+  ctx.fillStyle = '#9CA3AF';
+  ctx.font = '10px Inter, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  labels.forEach((lbl, i) => {
+    const cx = padL + i * (chartW / n) + (chartW / n) / 2;
+    ctx.fillText(lbl, cx, padT + chartH + 6);
+  });
+}
+
+function drawLineChart(canvasId, lines, labels, opts = {}) {
+  const canvas = $(canvasId);
+  if (!canvas) return;
+  const W = canvas.offsetWidth || 500;
+  const H = opts.height || 200;
+  canvas.width  = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+
+  const allVals = lines.flatMap(l => l.values);
+  const minV = opts.minY !== undefined ? opts.minY : Math.min(...allVals) * 0.9;
+  const maxV = Math.max(...allVals) * 1.05;
+  const padL = 10, padR = 10, padT = 16, padB = 32;
+  const chartW = W - padL - padR;
+  const chartH = H - padT - padB;
+  const n = labels.length;
+
+  // Optional reference line
+  if (opts.refLine !== undefined) {
+    const ry = padT + chartH - ((opts.refLine - minV) / (maxV - minV)) * chartH;
+    ctx.beginPath();
+    ctx.strokeStyle = opts.refColor || '#9CA3AF';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([5, 4]);
+    ctx.moveTo(padL, ry);
+    ctx.lineTo(W - padR, ry);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  lines.forEach(line => {
+    ctx.beginPath();
+    ctx.strokeStyle = line.color;
+    ctx.lineWidth = line.width || 2;
+    if (line.dashed) ctx.setLineDash([4, 3]);
+    line.values.forEach((v, i) => {
+      const cx = padL + i * (chartW / (n - 1));
+      const cy = padT + chartH - ((v - minV) / (maxV - minV)) * chartH;
+      i === 0 ? ctx.moveTo(cx, cy) : ctx.lineTo(cx, cy);
+    });
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Dots
+    if (!line.noDots) {
+      line.values.forEach((v, i) => {
+        const cx = padL + i * (chartW / (n - 1));
+        const cy = padT + chartH - ((v - minV) / (maxV - minV)) * chartH;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+        ctx.fillStyle = line.color;
+        ctx.fill();
+      });
+    }
+  });
+
+  // X labels
+  ctx.fillStyle = '#9CA3AF';
+  ctx.font = '10px Inter, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  labels.forEach((lbl, i) => {
+    if (i % Math.ceil(n / 8) !== 0 && i !== n - 1) return;
+    const cx = padL + i * (chartW / (n - 1));
+    ctx.fillText(lbl, cx, padT + chartH + 6);
+  });
+}
+
+// ─── Tab switching ──────────────────────────────────────────────────────────────
+let _activeTab = 0;
+function switchTab(i) {
+  _activeTab = i;
+  document.querySelectorAll('.tab-btn').forEach((b, idx) => b.classList.toggle('active', idx === i));
+  document.querySelectorAll('.tab-panel').forEach((p, idx) => p.classList.toggle('active', idx === i));
+  requestAnimationFrame(() => renderTab(i));
+}
+function renderTab(i) {
+  if (i === 0) renderOverview();
+  if (i === 1) renderWorkforce();
+  if (i === 2) renderDiversity();
+  if (i === 3) renderTalent();
+  if (i === 4) renderRetention();
+  if (i === 5) renderEngagement();
+}
+
+// ─── Tab 0: Overview ────────────────────────────────────────────────────────────
+function renderOverview() {
+  hbar('overview-dept-bars', DEPTS.filter(d => d.name !== 'Executive').map(d => ({
+    label: d.name, value: d.hc, color: '#E8231A', display: d.hc.toLocaleString(),
+  })));
+
+  drawLineChart('hc-trend-chart', [
+    { values: HC_TREND.hc,    color: '#E8231A', width: 2.5 },
+    { values: HC_TREND.hires, color: '#1B9BF0', width: 2, dashed: true },
+    { values: HC_TREND.exits, color: '#EA580C', width: 2, dashed: true },
+  ], HC_TREND.months, { minY: 750 });
+}
+
+// ─── Tab 1: Workforce ────────────────────────────────────────────────────────────
+function renderWorkforce() {
+  // Dept table
+  const tbody = $('dept-table-body');
+  if (tbody) {
+    tbody.innerHTML = DEPTS.map(d => {
+      const risk = d.attrPct > 10 ? 'sb-red' : d.attrPct > 8 ? 'sb-yellow' : 'sb-green';
+      const riskLabel = d.attrPct > 10 ? 'At Risk' : d.attrPct > 8 ? 'Watch' : 'Healthy';
+      return `<tr>
+        <td style="font-weight:600">${d.name}</td>
+        <td class="right">${d.hc}</td>
+        <td class="right" style="color:var(--green);font-weight:600">+${d.hires}</td>
+        <td class="right">${d.openReqs > 0 ? `<span style="color:var(--red);font-weight:700">${d.openReqs}</span>` : '—'}</td>
+        <td class="right">${d.attrPct.toFixed(1)}%</td>
+        <td><span class="sb ${risk}">${riskLabel}</span></td>
+      </tr>`;
+    }).join('');
+  }
+
+  // Work arrangement donut
+  const workSegs = [
+    { label:'On-site',       value:483, color:'#111111', display:'483' },
+    { label:'Hybrid',        value:226, color:'#1B9BF0', display:'226' },
+    { label:'Fully Remote',  value:138, color:'#16A34A', display:'138' },
+  ];
+  drawDonut('work-arrangement-donut', workSegs, '847');
+  donutLegend('work-arrangement-legend', workSegs);
+
+  const empSegs = [
+    { label:'Full-Time',  value:791, color:'#111111', display:'791' },
+    { label:'Part-Time',  value: 56, color:'#1B9BF0', display:'56'  },
+  ];
+  drawDonut('emp-type-donut', empSegs, '847');
+  donutLegend('emp-type-legend', empSegs);
+
+  // Tenure histogram
+  drawBarChart('tenure-chart',
+    ['<1 yr','1-2 yrs','2-3 yrs','3-5 yrs','5-8 yrs','8-10 yrs','10+ yrs'],
+    [124, 218, 187, 163, 94, 38, 23],
+    ['#E8231A','#E8231A','#E8231A','#1B9BF0','#1B9BF0','#111111','#111111']
+  );
+
+  // Age donut
+  const ageSegs = [
+    { label:'18–24', value: 72,  color:'#1B9BF0',  display:'72'  },
+    { label:'25–34', value:289,  color:'#E8231A',  display:'289' },
+    { label:'35–44', value:248,  color:'#F5C800',  display:'248' },
+    { label:'45–54', value:162,  color:'#16A34A',  display:'162' },
+    { label:'55–64', value: 58,  color:'#7C3AED',  display:'58'  },
+    { label:'65+',   value: 18,  color:'#111111',  display:'18'  },
+  ];
+  drawDonut('age-donut', ageSegs, 'Ages');
+  donutLegend('age-legend', ageSegs);
+}
+
+// ─── Tab 2: Diversity ────────────────────────────────────────────────────────────
+function renderDiversity() {
+  // Women in leadership bars
+  hbar('women-leadership-bars', [
+    { label:'Individual Contributor', value:44, color:'#E8231A',  display:'44%', sub:'(IC level)' },
+    { label:'Manager / Team Lead',    value:41, color:'#E8231A',  display:'41%' },
+    { label:'Senior Manager',         value:39, color:'#1B9BF0',  display:'39%' },
+    { label:'Director',               value:38, color:'#1B9BF0',  display:'38%' },
+    { label:'Senior Director / VP',   value:33, color:'#F5C800',  display:'33%' },
+    { label:'SVP / EVP',              value:31, color:'#F5C800',  display:'31%' },
+    { label:'C-Suite',                value:28, color:'#7C3AED',  display:'28%' },
+  ]);
+
+  // Ethnicity donut
+  const ethSegs = [
+    { label:'White',              value:491, color:'#1B9BF0',  display:'491' },
+    { label:'Asian',              value:110, color:'#E8231A',  display:'110' },
+    { label:'Hispanic / Latino',  value:118, color:'#F5C800',  display:'118' },
+    { label:'Black / Afr. Amer.', value: 93, color:'#16A34A',  display:'93'  },
+    { label:'Two or More',        value: 22, color:'#7C3AED',  display:'22'  },
+    { label:'Other / Unknown',    value: 13, color:'#9CA3AF',  display:'13'  },
+  ];
+  drawDonut('ethnicity-donut', ethSegs, 'Ethnicity');
+  donutLegend('ethnicity-legend', ethSegs);
+
+  // Pay equity bars
+  hbar('pay-equity-bars', [
+    { label:'Individual Contributor', value:98, color:'#16A34A', display:'0.98', sub:'women:men ratio' },
+    { label:'Manager',                value:97, color:'#16A34A', display:'0.97' },
+    { label:'Senior Manager',         value:99, color:'#16A34A', display:'0.99' },
+    { label:'Director',               value:96, color:'#16A34A', display:'0.96' },
+    { label:'VP+',                    value:97, color:'#16A34A', display:'0.97' },
+  ]);
+
+  // D&I trend
+  drawLineChart('di-trend-chart', [
+    { values: DI_TREND.actual, color: '#E8231A',  width: 2.5 },
+    { values: DI_TREND.target, color: '#7C3AED',  width: 1.5, dashed: true },
+  ], DI_TREND.years, { minY: 20 });
+
+  // Gender by dept table
+  const tbody = $('gender-dept-table');
+  if (tbody) {
+    tbody.innerHTML = DEPTS.map(d => {
+      const womenN  = Math.round(d.hc * d.womenPct / 100);
+      const target  = 45;
+      const gap     = d.womenPct - target;
+      const gapLabel = gap >= 0 ? `<span class="sb sb-green">+${gap}pts vs target</span>` : `<span class="sb sb-red">${gap}pts vs target</span>`;
+      const mPct    = 100 - d.womenPct - 2;
+      return `<tr>
+        <td style="font-weight:600">${d.name}</td>
+        <td class="right">${d.hc}</td>
+        <td class="right">${womenN}</td>
+        <td class="right" style="font-weight:700">${d.womenPct}%</td>
+        <td style="min-width:160px">
+          <div class="stacked-bar">
+            <div class="stacked-seg" style="width:${mPct}%;background:#1B9BF0"></div>
+            <div class="stacked-seg" style="width:${d.womenPct}%;background:#E8231A"></div>
+            <div class="stacked-seg" style="width:2%;background:#F5C800"></div>
+          </div>
+          <div style="font-size:10px;color:var(--gray);margin-top:2px">${mPct}% M · ${d.womenPct}% F · 2% NB</div>
+        </td>
+        <td>${gapLabel}</td>
+      </tr>`;
+    }).join('');
+  }
+}
+
+// ─── Tab 3: Talent Acquisition ───────────────────────────────────────────────────
+function renderTalent() {
+  // Hiring funnel
+  const funnelEl = $('hiring-funnel');
+  if (funnelEl) {
+    const steps = [
+      { icon:'📥', label:'Applications Received', count:3847, conv:'—',   bg:'#EDE9FE', color:'#7C3AED' },
+      { icon:'📋', label:'Screened / Reviewed',   count:1284, conv:'33%', bg:'#DBEAFE', color:'#1B9BF0' },
+      { icon:'📞', label:'Phone / Video Screen',  count: 621, conv:'48%', bg:'#E0F2F1', color:'#00695C' },
+      { icon:'🔍', label:'Technical / Assessment',count: 298, conv:'48%', bg:'#FEF9C3', color:'#854D0E' },
+      { icon:'👥', label:'Final Round Interview', count: 196, conv:'66%', bg:'#DCFCE7', color:'#166534' },
+      { icon:'📄', label:'Offers Extended',       count: 142, conv:'72%', bg:'#FCE7F3', color:'#9D174D' },
+      { icon:'✅', label:'Offers Accepted (Hires)',count: 124, conv:'87%', bg:'#DCFCE7', color:'#166534' },
+    ];
+    const maxC = steps[0].count;
+    funnelEl.innerHTML = steps.map(s => `
+      <div class="funnel-step">
+        <div class="funnel-icon" style="background:${s.bg}">${s.icon}</div>
+        <div class="funnel-info">
+          <div class="funnel-label">${s.label}</div>
+          <div style="margin-top:4px">
+            <div class="hbar-track" style="height:6px">
+              <div class="hbar-fill" style="width:${Math.round(s.count/maxC*100)}%;background:${s.color}"></div>
+            </div>
+          </div>
+        </div>
+        <div style="text-align:right;flex-shrink:0;min-width:80px">
+          <div class="funnel-count" style="color:${s.color}">${s.count.toLocaleString()}</div>
+          <div class="funnel-conv">${s.conv !== '—' ? `Conv. ${s.conv}` : 'Top of funnel'}</div>
+        </div>
+      </div>`).join('');
+  }
+
+  // Hires vs exits monthly chart
+  drawBarChart('hires-exits-chart',
+    HC_TREND.months,
+    [HC_TREND.hires, HC_TREND.exits],
+    ['#16A34A', '#E8231A']
+  );
+
+  // Source of hire donut
+  const srcSegs = [
+    { label:'LinkedIn',         value:38, color:'#0A66C2', display:'38%' },
+    { label:'Employee Referral',value:28, color:'#16A34A', display:'28%' },
+    { label:'Company Website',  value:12, color:'#E8231A', display:'12%' },
+    { label:'Agencies / RPO',   value: 9, color:'#F5C800', display:'9%'  },
+    { label:'Indeed / Job Sites',value:8, color:'#7C3AED', display:'8%'  },
+    { label:'Other',            value: 5, color:'#9CA3AF', display:'5%'  },
+  ];
+  drawDonut('source-donut', srcSegs, 'Source');
+  donutLegend('source-legend', srcSegs);
+
+  // Open roles by dept
+  const openByDept = {};
+  DEPTS.forEach(d => { if (d.openReqs > 0) openByDept[d.name] = d.openReqs; });
+  hbar('open-roles-bars', Object.entries(openByDept).sort((a,b)=>b[1]-a[1]).map(([name, v]) => ({
+    label: name, value: v, color: '#E8231A', display: `${v} open`,
+  })));
+
+  // Open roles table
+  const tbody = $('open-roles-table');
+  if (tbody) {
+    tbody.innerHTML = OPEN_ROLES.map(r => {
+      const daysClass = r.days > 45 ? 'sb-red' : r.days > 30 ? 'sb-yellow' : 'sb-green';
+      const prClass   = r.priority === 'Critical' ? 'sb-red' : r.priority === 'High' ? 'sb-yellow' : 'sb-gray';
+      return `<tr>
+        <td style="font-weight:600">${r.role}</td>
+        <td>${r.dept}</td>
+        <td><span class="sb sb-blue">${r.level}</span></td>
+        <td class="right"><span class="sb ${daysClass}">${r.days}d</span></td>
+        <td class="right">${r.candidates}</td>
+        <td><span class="sb ${prClass}">${r.priority}</span></td>
+      </tr>`;
+    }).join('');
+  }
+}
+
+// ─── Tab 4: Retention & Attrition ────────────────────────────────────────────────
+function renderRetention() {
+  // Attrition by dept
+  hbar('attrition-dept-bars', DEPTS.map(d => ({
+    label: d.name, value: d.attrPct,
+    color: d.attrPct > 10 ? '#E8231A' : d.attrPct > 8 ? '#F5C800' : '#16A34A',
+    display: `${d.attrPct.toFixed(1)}%`,
+  })).sort((a,b) => b.value - a.value));
+
+  // Exit reasons donut
+  const exitSegs = [
+    { label:'Better Opportunity',    value:32, color:'#1B9BF0', display:'32%' },
+    { label:'Compensation',          value:24, color:'#E8231A', display:'24%' },
+    { label:'Career Growth',         value:18, color:'#F5C800', display:'18%' },
+    { label:'Work-Life Balance',     value:12, color:'#7C3AED', display:'12%' },
+    { label:'Manager / Culture',     value: 9, color:'#EA580C', display:'9%'  },
+    { label:'Relocation / Personal', value: 5, color:'#9CA3AF', display:'5%'  },
+  ];
+  drawDonut('exit-reasons-donut', exitSegs, 'Exits');
+  donutLegend('exit-reasons-legend', exitSegs);
+
+  // Attrition trend
+  drawLineChart('attrition-trend-chart', [
+    { values: ATTRITION_TREND.rate,    color:'#E8231A', width:2.5 },
+    { values: ATTRITION_TREND.rolling, color:'#1B9BF0', width:1.5, dashed:true },
+  ], ATTRITION_TREND.months, { minY: 0 });
+
+  // Tenure at departure histogram
+  drawBarChart('tenure-departure-chart',
+    ['<6mo','6-12mo','1-2yr','2-3yr','3-5yr','5+yr'],
+    [8, 14, 22, 16, 9, 4],
+    ['#E8231A','#E8231A','#F5C800','#1B9BF0','#16A34A','#111111']
+  );
+
+  // Flight risk table
+  const tbody = $('flight-risk-table');
+  if (tbody) {
+    tbody.innerHTML = DEPTS.map(d => {
+      const risk  = d.attrPct > 10 ? 'High' : d.attrPct > 8 ? 'Medium' : 'Low';
+      const rCls  = risk === 'High' ? 'sb-red' : risk === 'Medium' ? 'sb-yellow' : 'sb-green';
+      const action = risk === 'High' ? 'Review comp & career paths' : risk === 'Medium' ? 'Monitor closely' : 'Maintain programs';
+      return `<tr>
+        <td style="font-weight:600">${d.name}</td>
+        <td class="right">${d.hc}</td>
+        <td class="right">${d.exits}</td>
+        <td class="right" style="font-weight:700">${d.attrPct.toFixed(1)}%</td>
+        <td class="right">${d.avgTenure.toFixed(1)} yrs</td>
+        <td><span class="sb ${rCls}">${risk}</span></td>
+        <td style="font-size:12px;color:var(--gray)">${action}</td>
+      </tr>`;
+    }).sort((a, b) => {
+      const ra = a.querySelector('td:nth-child(4)').textContent;
+      const rb = b.querySelector('td:nth-child(4)').textContent;
+      return parseFloat(rb) - parseFloat(ra);
+    }).map(tr => tr.outerHTML).join('');
+  }
+}
+
+// ─── Tab 5: Engagement & Performance ─────────────────────────────────────────────
+function renderEngagement() {
+  // eNPS breakdown bars
+  hbar('enps-bars', [
+    { label:'Promoters (9–10)',   value:57, color:'#16A34A', display:'57%' },
+    { label:'Passives (7–8)',     value:18, color:'#F5C800', display:'18%' },
+    { label:'Detractors (0–6)',   value:25, color:'#E8231A', display:'25%' },
+  ]);
+
+  // Engagement trend
+  drawLineChart('engagement-trend-chart', [
+    { values: ENGAGEMENT_TREND.score, color:'#7C3AED', width:2.5 },
+  ], ENGAGEMENT_TREND.quarters, {
+    minY: 55,
+    refLine: ENGAGEMENT_TREND.benchmark,
+    refColor: '#9CA3AF',
+  });
+
+  // Performance ratings distribution
+  drawBarChart('perf-ratings-chart',
+    ['1 — Below Exp.','2 — Needs Impr.','3 — Meets Exp.','4 — Exceeds Exp.','5 — Exceptional'],
+    [3, 8, 41, 36, 12],
+    ['#E8231A','#F5C800','#1B9BF0','#16A34A','#7C3AED']
+  );
+
+  // Engagement by dept bars
+  hbar('engagement-dept-bars', DEPTS.map(d => ({
+    label: d.name, value: d.engScore,
+    color: d.engScore >= 78 ? '#16A34A' : d.engScore >= 72 ? '#1B9BF0' : '#F5C800',
+    display: `${d.engScore}%`,
+  })).sort((a,b) => b.value - a.value));
+
+  // Engagement table
+  const tbody = $('engagement-dept-table');
+  if (tbody) {
+    tbody.innerHTML = DEPTS.map(d => {
+      const engCls  = d.engScore >= 78 ? 'sb-green' : d.engScore >= 72 ? 'sb-blue' : 'sb-yellow';
+      const trainCls = d.trainPct >= 85 ? 'sb-green' : d.trainPct >= 75 ? 'sb-yellow' : 'sb-red';
+      const status  = d.engScore >= 78 ? 'Thriving' : d.engScore >= 72 ? 'Good' : 'Needs Focus';
+      const stCls   = d.engScore >= 78 ? 'sb-green' : d.engScore >= 72 ? 'sb-teal' : 'sb-yellow';
+      return `<tr>
+        <td style="font-weight:600">${d.name}</td>
+        <td class="right">${d.hc}</td>
+        <td class="right"><span class="sb ${engCls}">${d.engScore}%</span></td>
+        <td class="right"><span class="sb ${trainCls}">${d.trainPct}%</span></td>
+        <td class="right">${d.promos}</td>
+        <td class="right">${d.avgRating.toFixed(1)} / 5.0</td>
+        <td><span class="sb ${stCls}">${status}</span></td>
+      </tr>`;
+    }).join('');
+  }
+}
+
+// ─── Init ──────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  requestAnimationFrame(() => renderTab(0));
+});
+</script>
+</body>
+</html>
