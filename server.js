@@ -136,25 +136,44 @@ async function fetchAllDeals() {
 // We use it to overwrite hubspot_owner_id on every deal after the search fetch.
 async function refreshOwnerIds(rawDeals) {
   const BATCH = 100;
+  const TARGET = '319213775605'; // debug: always log this deal
   const byId = Object.fromEntries(rawDeals.map(d => [d.id, d]));
+
+  console.log(`[refreshOwnerIds] starting — ${rawDeals.length} deals`);
+  const targetFromSearch = byId[TARGET] && byId[TARGET].properties && byId[TARGET].properties.hubspot_owner_id;
+  console.log(`[refreshOwnerIds] deal ${TARGET} owner from search index: ${targetFromSearch}`);
 
   for (let i = 0; i < rawDeals.length; i += BATCH) {
     const chunk = rawDeals.slice(i, i + BATCH);
+    const chunkHasTarget = chunk.some(d => d.id === TARGET);
     try {
+      const reqBody = {
+        properties: ['hubspot_owner_id'],
+        inputs: chunk.map(d => ({ id: d.id })),
+      };
+      console.log(`[refreshOwnerIds] batch ${i}–${i + chunk.length}: POST batch/read (hasTarget=${chunkHasTarget})`);
       const res = await fetch('https://api.hubapi.com/crm/v3/objects/deals/batch/read', {
         method: 'POST',
         headers: hubHeaders(),
-        body: JSON.stringify({
-          properties: ['hubspot_owner_id'],
-          inputs: chunk.map(d => ({ id: d.id })),
-        }),
+        body: JSON.stringify(reqBody),
       });
+      const statusTxt = res.status;
       if (!res.ok) {
-        console.warn(`refreshOwnerIds batch HTTP ${res.status}`);
+        const body = await res.text();
+        console.warn(`[refreshOwnerIds] batch HTTP ${statusTxt}: ${body.slice(0, 300)}`);
         continue;
       }
-      for (const r of (await res.json()).results || []) {
+      const data = await res.json();
+      const results = data.results || [];
+      console.log(`[refreshOwnerIds] batch ${i}: got ${results.length} results back`);
+
+      for (const r of results) {
         const fresh = r.properties && r.properties.hubspot_owner_id;
+        // Always log the target deal regardless of change
+        if (r.id === TARGET) {
+          console.log(`[refreshOwnerIds] deal ${TARGET} RAW batch/read result:`, JSON.stringify(r.properties));
+          console.log(`[refreshOwnerIds] deal ${TARGET}: search=${targetFromSearch} batchRead=${fresh}`);
+        }
         if (!fresh || !byId[r.id]) continue;
         const stale = byId[r.id].properties && byId[r.id].properties.hubspot_owner_id;
         if (stale !== fresh) {
@@ -163,9 +182,10 @@ async function refreshOwnerIds(rawDeals) {
         }
       }
     } catch (e) {
-      console.warn('refreshOwnerIds failed:', e.message);
+      console.warn(`[refreshOwnerIds] batch ${i} threw:`, e.message);
     }
   }
+  console.log(`[refreshOwnerIds] done`);
   return rawDeals; // mutated in place
 }
 
