@@ -47,11 +47,18 @@ const QUALIFIED_STAGE_IDS = new Set([
 ]);
 
 const OWNER_MAP = {
-  '83189293':  'Joe',
-  '163553855': 'Lauren',
+  '65048052':  'Joshua Irwin',
+  '83189293':  'Lauren Tothero',
+  '89551450':  'Charlie Donner',
+  '163010511': 'Blair Sherman',
+  '163010512': 'Efrat LaMandre',
   '163553854': 'Florencia Scopp',
+  '163553855': 'Joe Carbonaro',
   '163553901': 'Jonathan Goldberg',
-  '163575365': 'Jonathan Goldberg',
+  '163575365': 'Alicia Ortiz',
+  '163749222': 'Joshua Stidham',
+  '163889841': 'Michael',
+  '164094637': 'Kamil Chaudry',
 };
 
 // Cache for owner names fetched from HubSpot (persists for the process lifetime)
@@ -229,31 +236,27 @@ function mapDeal(raw, ownerName) {
   };
 }
 
-// First names to normalize to single-name display (must match DUET_ORDER in frontend)
-const DUET_FIRST_NAMES = new Set(['Lauren', 'Joe', 'Florencia', 'Jonathan']);
-
 async function fetchAllOwners() {
   try {
     let after = null;
     let total = 0;
-    console.log('Fetching HubSpot owners...');
     while (true) {
       const url = `https://api.hubapi.com/crm/v3/owners?limit=100${after ? '&after=' + encodeURIComponent(after) : ''}`;
       const res = await fetch(url, { headers: hubHeaders() });
-      if (!res.ok) break;
+      if (!res.ok) {
+        console.warn(`fetchAllOwners: HTTP ${res.status} — falling back to OWNER_MAP only`);
+        break;
+      }
       const data = await res.json();
       for (const o of data.results || []) {
-        const fullName = [o.firstName, o.lastName].filter(Boolean).join(' ') || o.email || `Owner ${o.id}`;
-        // Normalize Duet team members to first-name only so they match frontend DUET_ORDER
-        const displayName = DUET_FIRST_NAMES.has(o.firstName) ? o.firstName : fullName;
-        console.log(`  [owner] id=${o.id} firstName=${o.firstName || ''} lastName=${o.lastName || ''} → "${displayName}"`);
-        if (!OWNER_MAP[String(o.id)]) _ownerCache[String(o.id)] = displayName;
+        const name = [o.firstName, o.lastName].filter(Boolean).join(' ') || o.email || `Owner ${o.id}`;
+        if (!OWNER_MAP[String(o.id)]) _ownerCache[String(o.id)] = name;
         total++;
       }
       after = data.paging && data.paging.next && data.paging.next.after;
       if (!after) break;
     }
-    console.log(`Pre-loaded ${total} HubSpot owners into cache`);
+    if (total) console.log(`Pre-loaded ${total} HubSpot owners into cache`);
   } catch (e) {
     console.warn('fetchAllOwners failed:', e.message);
   }
