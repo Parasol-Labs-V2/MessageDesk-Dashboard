@@ -561,11 +561,27 @@ app.get('/api/team-performance', async (req, res) => {
       fetchAllCallsInRange(sixWeeks[0].start, Date.now()),
     ]);
 
-    // Derive subsets from the single 6-week fetch
-    const ts = c => parseInt((c.properties && c.properties.hs_timestamp) || 0);
-    const callsRaw    = sixWeekCalls.filter(c => ts(c) >= weekCutoff);
-    const wtdCallsRaw = sixWeekCalls.filter(c => ts(c) >= wtdStart);
-    const lwCallsRaw  = sixWeekCalls.filter(c => ts(c) >= lastWeekStart && ts(c) <= lastWeekEnd);
+    // HubSpot CRM v3 returns hs_timestamp as an ISO string ("2026-04-27T15:30:00.000Z")
+    // rather than epoch ms. Parse robustly: try parseInt first (epoch ms path),
+    // fall back to new Date() for ISO strings.
+    function callMs(c) {
+      const val = c.properties && c.properties.hs_timestamp;
+      if (!val) return 0;
+      const n = Number(val);
+      if (!isNaN(n) && n > 1e10) return n;   // already epoch ms
+      const d = new Date(val);
+      return isNaN(d.getTime()) ? 0 : d.getTime();
+    }
+
+    // Log first call's raw hs_timestamp to confirm format
+    if (sixWeekCalls.length > 0) {
+      const sample = sixWeekCalls[0].properties && sixWeekCalls[0].properties.hs_timestamp;
+      console.log(`[team-performance] sample hs_timestamp="${sample}" → parsed=${callMs(sixWeekCalls[0])}`);
+    }
+
+    const callsRaw    = sixWeekCalls.filter(c => callMs(c) >= weekCutoff);
+    const wtdCallsRaw = sixWeekCalls.filter(c => callMs(c) >= wtdStart);
+    const lwCallsRaw  = sixWeekCalls.filter(c => callMs(c) >= lastWeekStart && callMs(c) <= lastWeekEnd);
 
     console.log(`[team-performance] sixWeekCalls=${sixWeekCalls.length} wtd=${wtdCallsRaw.length} lw=${lwCallsRaw.length} rolling7d=${callsRaw.length}`);
 
@@ -691,8 +707,8 @@ app.get('/api/team-performance', async (req, res) => {
     // Group 6-week calls by week bucket and by owner for the bar chart
     const weeklyCallVolume = sixWeeks.map(week => {
       const wCalls = sixWeekCalls.filter(c => {
-        const ts = c.properties && parseInt(c.properties.hs_timestamp);
-        return ts >= week.start && ts <= week.end;
+        const t = callMs(c);
+        return t >= week.start && t <= week.end;
       });
       const byOwner = {};
       for (const c of wCalls) {
