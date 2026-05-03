@@ -92,7 +92,7 @@ const PROPS = [
 ];
 
 let _cache = null, _cacheTime = 0, _pending = null;
-const TTL = 5 * 60 * 1000;
+const TTL = 1 * 60 * 1000; // 1 minute — ensures owner changes propagate quickly
 
 function hubHeaders() {
   return { Authorization: `Bearer ${HB_KEY}`, 'Content-Type': 'application/json' };
@@ -129,6 +129,44 @@ async function fetchAllDeals() {
 
   console.log(`Total: ${all.length} deals`);
   return all;
+}
+
+// HubSpot's search index can lag hours behind CRM writes (e.g. owner reassignments).
+// The batch/read endpoint queries the source directly and is always current.
+// We use it to overwrite hubspot_owner_id on every deal after the search fetch.
+async function refreshOwnerIds(rawDeals) {
+  const BATCH = 100;
+  const byId = Object.fromEntries(rawDeals.map(d => [d.id, d]));
+
+  for (let i = 0; i < rawDeals.length; i += BATCH) {
+    const chunk = rawDeals.slice(i, i + BATCH);
+    try {
+      const res = await fetch('https://api.hubapi.com/crm/v3/objects/deals/batch/read', {
+        method: 'POST',
+        headers: hubHeaders(),
+        body: JSON.stringify({
+          properties: ['hubspot_owner_id'],
+          inputs: chunk.map(d => ({ id: d.id })),
+        }),
+      });
+      if (!res.ok) {
+        console.warn(`refreshOwnerIds batch HTTP ${res.status}`);
+        continue;
+      }
+      for (const r of (await res.json()).results || []) {
+        const fresh = r.properties && r.properties.hubspot_owner_id;
+        if (!fresh || !byId[r.id]) continue;
+        const stale = byId[r.id].properties && byId[r.id].properties.hubspot_owner_id;
+        if (stale !== fresh) {
+          console.log(`[refreshOwnerIds] deal ${r.id}: owner ${stale} → ${fresh} (search index was stale)`);
+          if (byId[r.id].properties) byId[r.id].properties.hubspot_owner_id = fresh;
+        }
+      }
+    } catch (e) {
+      console.warn('refreshOwnerIds failed:', e.message);
+    }
+  }
+  return rawDeals; // mutated in place
 }
 
 function mapDeal(raw, ownerName) {
@@ -282,6 +320,9 @@ async function fetchWeeklyEngagements(type, cutoffMs) {
 async function doRefresh() {
   await fetchAllOwners();
   const raw = await fetchAllDeals();
+
+  // Overwrite hubspot_owner_id with fresh data from batch/read (bypasses stale search index)
+  await refreshOwnerIds(raw);
 
   // Collect unique unknown owner IDs and resolve them in parallel
   const unknownIds = [...new Set(
