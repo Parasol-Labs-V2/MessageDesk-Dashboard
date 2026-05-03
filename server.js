@@ -619,6 +619,46 @@ app.get('/api/deal-debug', async (req, res) => {
   }
 });
 
+// Debug: fetch a single deal by ID with all owner-related fields
+// Usage: /api/deal-raw/319213775605
+app.get('/api/deal-raw/:id', async (req, res) => {
+  try {
+    const fields = [
+      'dealname',
+      'hubspot_owner_id',
+      'hs_all_owner_ids',
+      'secondary_owner',
+      'duet_engaged_owner',
+      'hs_created_by_user_id',
+      'hubspot_team_id',
+      'deal_source',
+      'dealstage',
+      'pipeline',
+    ].join(',');
+    const url = `https://api.hubapi.com/crm/v3/objects/deals/${req.params.id}?properties=${fields}`;
+    const r = await fetch(url, { headers: hubHeaders() });
+    if (!r.ok) return res.status(r.status).json({ error: `HubSpot ${r.status}`, body: await r.text() });
+    const raw = await r.json();
+    const p = raw.properties || {};
+    res.json({
+      id:                   raw.id,
+      dealname:             p.dealname,
+      hubspot_owner_id:     p.hubspot_owner_id,
+      ownerMapLookup:       OWNER_MAP[p.hubspot_owner_id] || _ownerCache[p.hubspot_owner_id] || '(unresolved)',
+      hs_all_owner_ids:     p.hs_all_owner_ids,
+      secondary_owner:      p.secondary_owner,
+      duet_engaged_owner:   p.duet_engaged_owner,
+      hs_created_by_user_id:p.hs_created_by_user_id,
+      hubspot_team_id:      p.hubspot_team_id,
+      deal_source:          p.deal_source,
+      dealstage:            p.dealstage,
+      ownerMap:             OWNER_MAP,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/pipeline-stats', async (req, res) => {
   try {
     const { deals, updatedAt } = await getData();
