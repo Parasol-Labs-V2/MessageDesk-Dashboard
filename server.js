@@ -554,20 +554,24 @@ app.get('/api/team-performance', async (req, res) => {
     const { wtdStart, lastWeekStart, lastWeekEnd } = getWeekBoundaries();
     const sixWeeks = getSixWeekBoundaries();
 
-    // Fetch calls + notes (rolling 7d) plus WTD/LW activity and 6-week chart data in parallel
-    const [callsRaw, notesRaw, wtdCallsRaw, lwCallsRaw, sixWeekCalls] = await Promise.all([
-      fetchWeeklyEngagements('calls', weekCutoff),
+    // One paginated call fetch covers all 6 weeks — derive WTD, last-week, and
+    // rolling-7d subsets from it in JS instead of making 3 separate API calls.
+    const [notesRaw, sixWeekCalls] = await Promise.all([
       fetchWeeklyEngagements('notes', weekCutoff),
-      fetchEngagementsInRange('calls', wtdStart, Date.now()),
-      fetchEngagementsInRange('calls', lastWeekStart, lastWeekEnd),
       fetchAllCallsInRange(sixWeeks[0].start, Date.now()),
     ]);
 
-    console.log(`[team-performance] wtdCalls=${wtdCallsRaw.length} lwCalls=${lwCallsRaw.length} sixWeekCalls=${sixWeekCalls.length}`);
+    // Derive subsets from the single 6-week fetch
+    const ts = c => parseInt((c.properties && c.properties.hs_timestamp) || 0);
+    const callsRaw    = sixWeekCalls.filter(c => ts(c) >= weekCutoff);
+    const wtdCallsRaw = sixWeekCalls.filter(c => ts(c) >= wtdStart);
+    const lwCallsRaw  = sixWeekCalls.filter(c => ts(c) >= lastWeekStart && ts(c) <= lastWeekEnd);
+
+    console.log(`[team-performance] sixWeekCalls=${sixWeekCalls.length} wtd=${wtdCallsRaw.length} lw=${lwCallsRaw.length} rolling7d=${callsRaw.length}`);
 
     // Resolve all owner IDs from engagements upfront
     const engagementOwnerIds = [...new Set([
-      ...callsRaw.map(r => r.properties && r.properties.hubspot_owner_id),
+      ...sixWeekCalls.map(r => r.properties && r.properties.hubspot_owner_id),
       ...notesRaw.map(r => r.properties && r.properties.hubspot_owner_id),
     ].filter(Boolean))];
     await Promise.all(engagementOwnerIds.map(resolveOwner));
