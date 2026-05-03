@@ -1,5 +1,34 @@
 'use strict';
 
+// ── Call volume chart state (module-level so onchange handler can reach it) ───
+let _callChartData = [];
+
+function renderCallChart() {
+  const sel   = document.getElementById('call-vol-owner');
+  const owner = sel ? sel.value : '';
+  const container = document.getElementById('call-vol-bars');
+  if (!container || !_callChartData.length) return;
+
+  const values  = _callChartData.map(w => owner ? ((w.byOwner && w.byOwner[owner]) || 0) : w.calls);
+  const maxVal  = Math.max(...values, 1);
+  const peakIdx = values.reduce((best, v, i) => v > values[best] ? i : best, 0);
+
+  container.innerHTML = values.map((v, i) => {
+    const pct    = Math.round((v / maxVal) * 100);
+    const isPeak = i === peakIdx && v > 0;
+    const barBg  = isPeak ? '#E8231A' : '#FECACA';
+    const lblClr = isPeak ? '#E8231A' : '#9CA3AF';
+    return `
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:3px">
+        <span style="font-size:11px;font-weight:700;color:${lblClr};min-height:16px;line-height:16px">${v > 0 ? v : ''}</span>
+        <div style="width:100%;flex:1;display:flex;align-items:flex-end;min-height:0">
+          <div style="width:100%;height:${pct}%;background:${barBg};border-radius:3px 3px 0 0;${v > 0 ? 'min-height:3px' : ''};transition:height .2s ease"></div>
+        </div>
+        <span style="font-size:10px;color:#9CA3AF;text-align:center;white-space:nowrap">${_callChartData[i].label}</span>
+      </div>`;
+  }).join('');
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // TAB 4 — WoW Changes
 // ══════════════════════════════════════════════════════════════════════════════
@@ -204,7 +233,8 @@ async function renderTeamPerformance() {
     return;
   }
 
-  const { owners, attention, summary, activity } = data;
+  const { owners, attention, summary, activity, weeklyCallVolume } = data;
+  _callChartData = weeklyCallVolume || [];
 
   // ── helpers ──────────────────────────────────────────────────────────────────
   const AVATAR_COLORS = { 'Joe Carbonaro': '#1B9BF0', 'Lauren Tothero': '#F59E0B', 'Florencia Scopp': '#059669', 'Jonathan Goldberg': '#7C3AED' };
@@ -347,6 +377,23 @@ async function renderTeamPerformance() {
     <div class="tp-owners-wrap">${ownerCards}</div>
 
     <div class="tp-section-hdr">
+      <div class="tp-section-title">Call Volume — Last 6 Weeks</div>
+      <div style="font-size:12px;color:#9CA3AF">Logged calls per week in HubSpot</div>
+    </div>
+    <div style="background:#fff;border-radius:12px;box-shadow:var(--shadow);border:1px solid var(--gray-border);padding:20px 24px;margin-bottom:4px">
+      <div style="display:flex;align-items:center;justify-content:flex-end;margin-bottom:14px">
+        <select id="call-vol-owner" onchange="renderCallChart()" style="font-size:12px;padding:5px 10px;border:1px solid #D1D5DB;border-radius:6px;background:#fff;color:#374151;cursor:pointer">
+          <option value="">All Owners</option>
+          <option value="Joe Carbonaro">Joe Carbonaro</option>
+          <option value="Lauren Tothero">Lauren Tothero</option>
+          <option value="Florencia Scopp">Florencia Scopp</option>
+          <option value="Jonathan Goldberg">Jonathan Goldberg</option>
+        </select>
+      </div>
+      <div id="call-vol-bars" style="display:flex;gap:10px;height:120px;align-items:stretch"></div>
+    </div>
+
+    <div class="tp-section-hdr">
       <div class="tp-section-title">🚨 Needs Attention</div>
       <div style="font-size:12px;color:#9CA3AF">Never contacted · older than 14 days · ${neglected.length} account${neglected.length !== 1 ? 's' : ''} · Parasol team only</div>
       <span title="'Never Contacted' = deals where outreach_attempt_count = 0 in HubSpot. Jonathan Goldberg's accounts excluded (not Parasol team)." style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#E5E7EB;color:#6B7280;font-size:11px;font-weight:700;cursor:help;flex-shrink:0">?</span>
@@ -363,6 +410,8 @@ async function renderTeamPerformance() {
       </table>
     </div></div>
   `;
+  // Render chart bars now that the DOM contains the #call-vol-bars container
+  renderCallChart();
 }
 
 function filterAllDealsByOwner(owner) {

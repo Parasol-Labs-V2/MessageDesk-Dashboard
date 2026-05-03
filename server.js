@@ -291,6 +291,60 @@ function getWeekBoundaries() {
   };
 }
 
+// Returns 6 week ranges oldest-first: [{ label, start, end }, ...]
+function getSixWeekBoundaries() {
+  const now = new Date();
+  const daysSinceMon = now.getDay() === 0 ? 6 : now.getDay() - 1;
+  const thisMon = new Date(now);
+  thisMon.setDate(now.getDate() - daysSinceMon);
+  thisMon.setHours(0, 0, 0, 0);
+
+  const weeks = [];
+  for (let i = 5; i >= 0; i--) {
+    const wStart = new Date(thisMon);
+    wStart.setDate(thisMon.getDate() - i * 7);
+    let wEnd;
+    if (i === 0) {
+      wEnd = now; // current (partial) week ends now
+    } else {
+      wEnd = new Date(wStart);
+      wEnd.setDate(wStart.getDate() + 7);
+      wEnd.setMilliseconds(-1); // Sunday 23:59:59.999
+    }
+    const label = wStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    weeks.push({ label, start: wStart.getTime(), end: wEnd.getTime() });
+  }
+  return weeks;
+}
+
+// Paginated call fetch for a time range — avoids the 100-result cap of fetchEngagementsInRange
+async function fetchAllCallsInRange(fromMs, toMs) {
+  const calls = [];
+  let after = null;
+  while (true) {
+    const body = {
+      filterGroups: [{ filters: [{ propertyName: 'hs_timestamp', operator: 'BETWEEN', value: String(fromMs), highValue: String(toMs) }] }],
+      properties: ['hubspot_owner_id', 'hs_timestamp'],
+      limit: 100,
+    };
+    if (after) body.after = after;
+    try {
+      const res = await fetch('https://api.hubapi.com/crm/v3/objects/calls/search', {
+        method: 'POST', headers: hubHeaders(), body: JSON.stringify(body),
+      });
+      if (!res.ok) { console.warn(`fetchAllCallsInRange HTTP ${res.status}`); break; }
+      const data = await res.json();
+      calls.push(...(data.results || []));
+      after = data.paging && data.paging.next && data.paging.next.after;
+      if (!after) break;
+    } catch (e) {
+      console.warn('fetchAllCallsInRange failed:', e.message);
+      break;
+    }
+  }
+  return calls;
+}
+
 async function fetchEngagementsInRange(type, fromMs, toMs) {
   try {
     const res = await fetch(`https://api.hubapi.com/crm/v3/objects/${type}/search`, {
@@ -498,21 +552,18 @@ app.get('/api/team-performance', async (req, res) => {
     const { deals, updatedAt } = await getData();
     const weekCutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
     const { wtdStart, lastWeekStart, lastWeekEnd } = getWeekBoundaries();
+    const sixWeeks = getSixWeekBoundaries();
 
-    console.log('[team-performance] Fetching engagements...');
-    console.log(`  WTD calls:  ${new Date(wtdStart).toISOString()} → now`);
-    console.log(`  LW calls:   ${new Date(lastWeekStart).toISOString()} → ${new Date(lastWeekEnd).toISOString()}`);
-    console.log(`  LW ms:      ${lastWeekStart} → ${lastWeekEnd}`);
-
-    // Fetch calls + notes (rolling 7d) plus WTD and last-week calls in parallel
-    const [callsRaw, notesRaw, wtdCallsRaw, lwCallsRaw] = await Promise.all([
+    // Fetch calls + notes (rolling 7d) plus WTD/LW activity and 6-week chart data in parallel
+    const [callsRaw, notesRaw, wtdCallsRaw, lwCallsRaw, sixWeekCalls] = await Promise.all([
       fetchWeeklyEngagements('calls', weekCutoff),
       fetchWeeklyEngagements('notes', weekCutoff),
       fetchEngagementsInRange('calls', wtdStart, Date.now()),
       fetchEngagementsInRange('calls', lastWeekStart, lastWeekEnd),
+      fetchAllCallsInRange(sixWeeks[0].start, Date.now()),
     ]);
 
-    console.log(`[team-performance] wtdCalls=${wtdCallsRaw.length} lwCalls=${lwCallsRaw.length}`);
+    console.log(`[team-performance] wtdCalls=${wtdCallsRaw.length} lwCalls=${lwCallsRaw.length} sixWeekCalls=${sixWeekCalls.length}`);
 
     // Resolve all owner IDs from engagements upfront
     const engagementOwnerIds = [...new Set([
@@ -633,9 +684,24 @@ app.get('/api/team-performance', async (req, res) => {
     const wtdDeals = dealActivity('wtd', wtdStart, Date.now());
     const lwDeals  = dealActivity('lw',  lastWeekStart, lastWeekEnd);
 
+    // Group 6-week calls by week bucket and by owner for the bar chart
+    const weeklyCallVolume = sixWeeks.map(week => {
+      const wCalls = sixWeekCalls.filter(c => {
+        const ts = c.properties && parseInt(c.properties.hs_timestamp);
+        return ts >= week.start && ts <= week.end;
+      });
+      const byOwner = {};
+      for (const c of wCalls) {
+        const name = ownerNameFromId(c.properties && c.properties.hubspot_owner_id);
+        if (name) byOwner[name] = (byOwner[name] || 0) + 1;
+      }
+      return { label: week.label, calls: wCalls.length, byOwner };
+    });
+
     const payload = {
       owners,
       attention,
+      weeklyCallVolume,
       activity: {
         wtd:      { calls: wtdCallsRaw.length,  ...wtdDeals },
         lastWeek: { calls: lwCallsRaw.length,   ...lwDeals  },
