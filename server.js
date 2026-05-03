@@ -581,6 +581,44 @@ app.get('/api/deals', async (req, res) => {
   }
 });
 
+// Debug: search for a deal by name and return raw owner fields
+// Usage: /api/deal-debug?name=HENRIKSON
+app.get('/api/deal-debug', async (req, res) => {
+  try {
+    const q = (req.query.name || '').toLowerCase();
+    const { deals } = await getData();
+    const match = deals.filter(d => d.dealname && d.dealname.toLowerCase().includes(q));
+    // Also fetch raw properties direct from HubSpot for the first match
+    if (match.length === 0) return res.json({ message: 'No deals matched', query: q });
+
+    // For each match pull the raw HubSpot record to inspect all owner fields
+    const rawResults = await Promise.all(match.slice(0, 5).map(async d => {
+      try {
+        const r = await fetch(
+          `https://api.hubapi.com/crm/v3/objects/deals/${d.id}?properties=dealname,hubspot_owner_id,secondary_owner,duet_engaged_owner,deal_source`,
+          { headers: hubHeaders() }
+        );
+        const raw = r.ok ? await r.json() : { error: `HTTP ${r.status}` };
+        return {
+          id:                 d.id,
+          dealname:           d.dealname,
+          resolvedOwner:      d.owner,
+          hubspot_owner_id:   raw.properties && raw.properties.hubspot_owner_id,
+          secondary_owner:    raw.properties && raw.properties.secondary_owner,
+          duet_engaged_owner: raw.properties && raw.properties.duet_engaged_owner,
+          deal_source:        raw.properties && raw.properties.deal_source,
+          ownerMapEntry:      OWNER_MAP[raw.properties && raw.properties.hubspot_owner_id] || '(not in OWNER_MAP)',
+        };
+      } catch (e) {
+        return { id: d.id, dealname: d.dealname, error: e.message };
+      }
+    }));
+    res.json({ query: q, results: rawResults, ownerMap: OWNER_MAP });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/pipeline-stats', async (req, res) => {
   try {
     const { deals, updatedAt } = await getData();
