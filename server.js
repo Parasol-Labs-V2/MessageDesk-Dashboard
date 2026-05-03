@@ -697,6 +697,7 @@ app.get('/api/team-performance', async (req, res) => {
       }
       return { label: week.label, calls: wCalls.length, byOwner };
     });
+    console.log('[team-performance] weeklyCallVolume:', weeklyCallVolume.map(w => `${w.label}=${w.calls}`).join(', '));
 
     const payload = {
       owners,

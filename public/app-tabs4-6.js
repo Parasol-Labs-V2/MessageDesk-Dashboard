@@ -7,6 +7,7 @@ function renderCallChart() {
   const sel   = document.getElementById('call-vol-owner');
   const owner = sel ? sel.value : '';
   const container = document.getElementById('call-vol-bars');
+  console.log('[renderCallChart] data length:', _callChartData.length, '| container:', !!container, '| owner filter:', owner || '(all)');
   if (!container || !_callChartData.length) return;
 
   const values  = _callChartData.map(w => owner ? ((w.byOwner && w.byOwner[owner]) || 0) : w.calls);
@@ -243,7 +244,9 @@ async function renderTeamPerformance() {
     const i = DUET_ORDER.findIndex(k => name.includes(k));
     return i === -1 ? DUET_ORDER.length : i;
   }
-  const sortedOwners = [...owners].sort((a, b) => ownerSortKey(a.owner) - ownerSortKey(b.owner));
+  const sortedOwners = [...owners]
+    .filter(o => DUET_ORDER.includes(o.owner))
+    .sort((a, b) => ownerSortKey(a.owner) - ownerSortKey(b.owner));
 
   function avatarColor(name) {
     for (const [k, v] of Object.entries(AVATAR_COLORS)) if (name.includes(k)) return v;
