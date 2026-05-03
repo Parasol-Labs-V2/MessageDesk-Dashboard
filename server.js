@@ -341,6 +341,28 @@ async function doRefresh() {
   await fetchAllOwners();
   const raw = await fetchAllDeals();
 
+  // ── Diagnostic: confirm whether the Henrikson deal is in search results ──────
+  const TARGET_ID = '319213775605';
+  const targetRaw = raw.find(d => d.id === TARGET_ID);
+  if (targetRaw) {
+    console.log(`[doRefresh] deal ${TARGET_ID} FOUND in search (total=${raw.length}), owner=${targetRaw.properties && targetRaw.properties.hubspot_owner_id}, stage=${targetRaw.properties && targetRaw.properties.dealstage}`);
+  } else {
+    console.log(`[doRefresh] deal ${TARGET_ID} NOT IN SEARCH RESULTS (total=${raw.length}) — likely archived or not indexed`);
+    // Try fetching it directly to confirm it exists and what pipeline it's in
+    try {
+      const r = await fetch(`https://api.hubapi.com/crm/v3/objects/deals/${TARGET_ID}?properties=dealname,dealstage,pipeline,hubspot_owner_id,hs_is_closed_won,archived`, { headers: hubHeaders() });
+      if (r.ok) {
+        const d = await r.json();
+        console.log(`[doRefresh] direct fetch of ${TARGET_ID}:`, JSON.stringify({ id: d.id, archived: d.archived, properties: d.properties }));
+      } else {
+        console.log(`[doRefresh] direct fetch of ${TARGET_ID} returned HTTP ${r.status}`);
+      }
+    } catch (e) {
+      console.warn(`[doRefresh] direct fetch of ${TARGET_ID} failed:`, e.message);
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────────
+
   // Overwrite hubspot_owner_id with fresh data from batch/read (bypasses stale search index)
   await refreshOwnerIds(raw);
 
