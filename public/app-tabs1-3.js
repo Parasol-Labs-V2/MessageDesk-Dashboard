@@ -214,6 +214,9 @@ function renderFunnel() {
   const loiCount      = deals.filter(d => d.stageId === '3446820542').length;
   const loiRate       = meetingCount > 0 ? Math.round(loiCount / meetingCount * 100) : 0;
 
+  const metWithCount  = deals.filter(d => QUALIFIED_IDS.has(d.stageId)).length;
+  const metWithRate   = deals.length > 0 ? (metWithCount / deals.length * 100).toFixed(1) : '0.0';
+
   const wonCount      = deals.filter(d => d.isWon).length;
   const lostCount     = deals.filter(d => d.isLost).length;
   const closedTotal   = wonCount + lostCount;
@@ -294,6 +297,11 @@ function renderFunnel() {
               <div class="conv-pct">${winRate}%</div>
               <div class="conv-lbl">Win Rate</div>
               <div class="conv-sub">Won / (Won + Lost)</div>
+            </div>
+            <div class="conv-card">
+              <div class="conv-pct">${metWithRate}%</div>
+              <div class="conv-lbl">% Met With</div>
+              <div class="conv-sub">of full list reached meeting</div>
             </div>
           </div>
         </div>
