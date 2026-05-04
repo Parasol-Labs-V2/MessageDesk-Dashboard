@@ -255,7 +255,7 @@ function buildDashboard(deals) {
 
   // Win rate: only count lost deals where a meeting was actually held.
   // "No Showed" is excluded — the meeting was scheduled but never happened.
-  const MEETING_HELD_LOST = new Set(['No Decision', 'Timing', 'Mass Texting']);
+  const MEETING_HELD_LOST = new Set(['No Decision', 'Timing']);
   const qualifiedLost = lost.filter(d => MEETING_HELD_LOST.has(d.stage));
   const winRateDenom  = won.length + qualifiedLost.length;
   const winRate       = winRateDenom > 0 ? Math.round(won.length / winRateDenom * 100) : 0;
