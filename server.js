@@ -11,6 +11,12 @@ const PIPELINE_ID = '2168635108';
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+app.use((req, res, next) => {
+  res.setHeader('X-Frame-Options', 'ALLOW-FROM https://parasol-hub.vercel.app');
+  res.setHeader('Content-Security-Policy', "frame-ancestors 'self' https://parasol-hub.vercel.app https://parasol-hub-fix.vercel.app");
+  next();
+});
+
 const STAGE_MAP = {
   '3446819577': 'New / Not Yet Contacted',
   '3446820538': 'Attempting Contact',
