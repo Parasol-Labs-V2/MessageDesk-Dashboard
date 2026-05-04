@@ -115,6 +115,16 @@ table  { border-collapse: collapse; width: 100%; }
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.15} }
 .alert-bar strong { color: var(--yellow); }
 
+/* ─── MRR Goal Bar ───────────────────────────────────────────────────────────── */
+.mrr-goal-bar { background: #fff; border: 1px solid #E5E7EB; border-radius: 10px; padding: 16px 20px; margin-bottom: 24px; }
+.mrr-goal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.mrr-goal-label { font-size: 12px; font-weight: 700; color: #6B7280; text-transform: uppercase; letter-spacing: .04em; }
+.mrr-goal-pct { font-size: 13px; font-weight: 700; color: #111; }
+.mrr-goal-track { height: 10px; background: #F3F4F6; border-radius: 999px; overflow: hidden; margin-bottom: 8px; }
+.mrr-goal-fill { height: 100%; border-radius: 999px; transition: width .4s ease; }
+.mrr-goal-meta { font-size: 12px; color: #6B7280; }
+.mrr-goal-meta span { color: #111; font-weight: 600; }
+
 /* ─── KPI Cards ──────────────────────────────────────────────────────────────── */
 .kpi-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; margin-bottom: 24px; }
 .kpi-grid.cols3 { grid-template-columns: repeat(3,1fr); }
@@ -598,6 +608,25 @@ function renderPipeline() {
         <div class="kpi-tag green">✓ Won</div>
       </div>
     </div>
+
+    ${(() => {
+      const GOAL = 12500;
+      const current = k.won_mrr || 0;
+      const pct = Math.min(Math.round(current / GOAL * 100), 100);
+      const gap = Math.max(GOAL - current, 0);
+      const barColor = pct >= 80 ? '#16A34A' : pct >= 50 ? '#CA8A04' : '#DC2626';
+      const fmtK = v => v >= 1000 ? `$${(v/1000).toFixed(1)}K` : `$${v}`;
+      return `<div class="mrr-goal-bar">
+        <div class="mrr-goal-header">
+          <div class="mrr-goal-label">MRR Goal — $12.5K/mo</div>
+          <div class="mrr-goal-pct" style="color:${barColor}">${pct}% to goal</div>
+        </div>
+        <div class="mrr-goal-track">
+          <div class="mrr-goal-fill" style="width:${pct}%;background:${barColor}"></div>
+        </div>
+        <div class="mrr-goal-meta">Current: <span>${fmtK(current)}</span> &nbsp;·&nbsp; Gap: <span>${fmtK(gap)}</span> &nbsp;·&nbsp; ${pct}% to goal</div>
+      </div>`;
+    })()}
 
     ${section('Champion Confirmed', `${champion.length} deals · ${fmtMRR(champMRR)}/mo`, sortByScore(champion))}
     ${section('Active Evaluation',  `${ae.length} deals`, sortByVal(ae))}
