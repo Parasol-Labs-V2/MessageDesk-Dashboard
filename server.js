@@ -253,6 +253,13 @@ function buildDashboard(deals) {
     active_updated:       deals.filter(d => d.category === 'active'            && inThis(d.date_updated)),
   };
 
+  // Win rate: only count lost deals where a meeting was actually held.
+  // "No Showed" is excluded — the meeting was scheduled but never happened.
+  const MEETING_HELD_LOST = new Set(['No Decision', 'Timing', 'Mass Texting']);
+  const qualifiedLost = lost.filter(d => MEETING_HELD_LOST.has(d.stage));
+  const winRateDenom  = won.length + qualifiedLost.length;
+  const winRate       = winRateDenom > 0 ? Math.round(won.length / winRateDenom * 100) : 0;
+
   const kpis = {
     total:            deals.length,
     active_count:     active.length,     active_mrr:     sum(active),
@@ -260,6 +267,8 @@ function buildDashboard(deals) {
     won_count:        won.length,        won_mrr:        sum(won),
     lost_count:       lost.length,
     champion_count:   champion.length,   champion_mrr:   sum(champion),
+    win_rate:         winRate,
+    win_rate_denom:   winRateDenom,
   };
 
   return {

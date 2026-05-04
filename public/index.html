@@ -764,7 +764,8 @@ function renderFunnel() {
   const lost       = deals.filter(d => d.category === 'lost');
 
   const totalClosed  = k.won_count + k.lost_count;
-  const winRate      = totalClosed > 0 ? Math.round(k.won_count / totalClosed * 100) : 0;
+  const winRate      = k.win_rate !== undefined ? k.win_rate : (totalClosed > 0 ? Math.round(k.won_count / totalClosed * 100) : 0);
+  const winRateDenom = k.win_rate_denom !== undefined ? k.win_rate_denom : totalClosed;
   const msCount      = cnt('Meeting Scheduled');
   const onbdCount    = k.onboarding_count;
   const msMeetPct    = msCount > 0 ? '76' : '—'; // static per spec (from CSV data)
@@ -815,8 +816,8 @@ function renderFunnel() {
       </div>
       <div class="metric-card">
         <div class="metric-pct">${winRate}%</div>
-        <div class="metric-label">Overall Win Rate</div>
-        <div class="metric-sub">${k.won_count} won / ${totalClosed} closed</div>
+        <div class="metric-label">Win Rate (post-meeting)</div>
+        <div class="metric-sub">${k.won_count} won / ${winRateDenom} qualified</div>
       </div>
     </div>
 
