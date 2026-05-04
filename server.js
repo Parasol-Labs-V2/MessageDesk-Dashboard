@@ -415,6 +415,46 @@ app.get('/api/meetings', async (req, res) => {
   }
 });
 
+// Debug: all unique lost stage/reason values in current data
+app.get('/api/debug/lost-reasons', async (req, res) => {
+  try {
+    await ensureData();
+    const deals = (_cache && _cache.deals) || [];
+    const lostDeals = deals.filter(d => d.category === 'lost');
+
+    // Count by stage (from cached data)
+    const stageCounts = {};
+    for (const d of lostDeals) {
+      stageCounts[d.stage] = (stageCounts[d.stage] || 0) + 1;
+    }
+
+    // Fetch a sample of raw lost opps from Close.io to check all available fields
+    const sampleIds = lostDeals.slice(0, 5).map(d => d.id);
+    const rawSamples = await Promise.all(sampleIds.map(async id => {
+      const r = await fetch(`https://api.close.com/api/v1/opportunity/${id}/`, { headers: authHeaders() });
+      if (!r.ok) return { id, error: r.status };
+      const opp = await r.json();
+      // Return only fields relevant to loss reason
+      return {
+        id: opp.id,
+        lead_name: opp.lead_name,
+        status: opp.status,
+        status_label: opp.status_label,
+        loss_reason: opp.loss_reason,
+        loss_reason_label: opp.loss_reason_label,
+        // any other loss-related keys
+        loss_keys: Object.keys(opp).filter(k => k.toLowerCase().includes('loss') || k.toLowerCase().includes('lost') || k.toLowerCase().includes('reason')),
+      };
+    }));
+
+    res.json({
+      total_lost: lostDeals.length,
+      by_stage: stageCounts,
+      raw_sample_fields: rawSamples,
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Debug: raw lead by ID
 app.get('/api/debug/lead/:id', async (req, res) => {
   try {
