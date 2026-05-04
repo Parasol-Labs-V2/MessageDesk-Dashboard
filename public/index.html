@@ -576,7 +576,7 @@ function renderPipeline() {
       <div class="kpi-card red">
         <div class="kpi-label">Active Deals</div>
         <div class="kpi-value">${active.length}</div>
-        <div class="kpi-sub">${fmtMRR(activeMRR)}/mo pipeline</div>
+        <div class="kpi-sub">${fmtMRR(activeMRR)}/mo · excl. onboarding</div>
         <div class="kpi-tag red">In Progress</div>
       </div>
       <div class="kpi-card yellow">
@@ -588,8 +588,8 @@ function renderPipeline() {
       <div class="kpi-card blue">
         <div class="kpi-label">Onboarding</div>
         <div class="kpi-value">${onboarding.length}</div>
-        <div class="kpi-sub">${fmtMRR(onbdMRR)}/mo in setup</div>
-        <div class="kpi-tag blue">In Setup</div>
+        <div class="kpi-sub">${fmtMRR(onbdMRR)}/mo · signed · not yet paying</div>
+        <div class="kpi-tag black">Gray area — signed, not paid</div>
       </div>
       <div class="kpi-card green">
         <div class="kpi-label">Closed Won</div>
@@ -784,12 +784,13 @@ function renderFunnel() {
       <div class="kpi-card red">
         <div class="kpi-label">Active Deals</div>
         <div class="kpi-value">${k.active_count}</div>
-        <div class="kpi-sub">${fmtMRR(k.active_mrr)}/mo pipeline</div>
+        <div class="kpi-sub">${fmtMRR(k.active_mrr)}/mo · excl. onboarding</div>
       </div>
       <div class="kpi-card blue">
         <div class="kpi-label">Onboarding</div>
         <div class="kpi-value">${k.onboarding_count}</div>
-        <div class="kpi-sub">${fmtMRR(k.onboarding_mrr)}/mo</div>
+        <div class="kpi-sub">${fmtMRR(k.onboarding_mrr)}/mo · signed · not yet paying</div>
+        <div class="kpi-tag black">Gray area — signed, not paid</div>
       </div>
       <div class="kpi-card yellow">
         <div class="kpi-label">Closed Won</div>
