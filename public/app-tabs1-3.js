@@ -141,14 +141,14 @@ async function renderActivePipeline() {
         <div class="kpi-value">${fmtLives(qualLives)}</div>
         <div class="kpi-sub">Meeting Booked and beyond</div>
       </div>
-      <div class="kpi-card blue">
-        <div class="kpi-label">Qualified Deals</div>
-        <div class="kpi-value">${qualified.length}</div>
-        <div class="kpi-sub">Meeting Booked and beyond</div>
-      </div>
       <div class="kpi-card yellow">
         <div class="kpi-label">Qualified Savings</div>
         <div class="kpi-value">${fmtSavingsRaw(qualSavings)}</div>
+        <div class="kpi-sub">Meeting Booked and beyond</div>
+      </div>
+      <div class="kpi-card blue">
+        <div class="kpi-label">Qualified Deals</div>
+        <div class="kpi-value">${qualified.length}</div>
         <div class="kpi-sub">Meeting Booked and beyond</div>
       </div>
       ${activityCard('lw',  'Last Week Activity', 'ap-lw-calls',  '…', lw)}
