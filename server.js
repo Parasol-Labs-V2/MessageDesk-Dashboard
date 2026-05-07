@@ -454,94 +454,27 @@ async function getData(force = false) {
   return _pending;
 }
 
-// ── /api/meetings — HubSpot meeting engagements, enriched with deal data ───────
+// ── /api/meetings — deals currently in Meeting Booked stage ──────────────────
 app.get('/api/meetings', async (req, res) => {
   try {
-    await getData(); // ensure deal cache is warm
+    const { deals } = await getData();
 
-    const now    = Date.now();
-    const past14 = now - 14 * 24 * 60 * 60 * 1000;
-    const next7  = now +  7 * 24 * 60 * 60 * 1000;
+    const booked = deals
+      .filter(d => d.stageId === '3467751100')
+      .map(d => ({
+        id:             d.id,
+        dealName:       d.dealname,
+        owner:          d.owner,
+        dealLives:      d.lives,
+        dealStage:      d.stage,
+        dealStageId:    d.stageId,
+        grossSavings:   d.grossSavings || 0,
+        championName:   d.championName || null,
+        lastModifiedMs: d.lastModified ? new Date(d.lastModified).getTime() : null,
+      }))
+      .sort((a, b) => (b.lastModifiedMs || 0) - (a.lastModifiedMs || 0));
 
-    // 1. Search meetings in the window [past14, next7]
-    const searchRes = await fetch('https://api.hubapi.com/crm/v3/objects/meetings/search', {
-      method: 'POST',
-      headers: hubHeaders(),
-      body: JSON.stringify({
-        filterGroups: [{
-          filters: [
-            { propertyName: 'hs_meeting_start_time', operator: 'BETWEEN', value: String(past14), highValue: String(next7) },
-          ],
-        }],
-        properties: ['hs_meeting_title','hs_meeting_start_time','hs_meeting_end_time',
-                     'hubspot_owner_id','hs_meeting_outcome'],
-        limit: 100,
-      }),
-    });
-
-    if (!searchRes.ok) {
-      const txt = await searchRes.text();
-      throw new Error(`HubSpot meetings search ${searchRes.status}: ${txt.slice(0, 200)}`);
-    }
-
-    const meetings = (await searchRes.json()).results || [];
-    if (meetings.length === 0) {
-      return res.json({ upcoming: [], recent: [], fetchedAt: new Date().toISOString() });
-    }
-
-    // 2. Batch-fetch meeting → deal associations
-    const dealIdsByMeeting = {};
-    try {
-      const assocRes = await fetch('https://api.hubapi.com/crm/v4/associations/meetings/deals/batch/read', {
-        method: 'POST',
-        headers: hubHeaders(),
-        body: JSON.stringify({ inputs: meetings.map(m => ({ id: m.id })) }),
-      });
-      if (assocRes.ok) {
-        const assocData = await assocRes.json();
-        for (const r of (assocData.results || [])) {
-          dealIdsByMeeting[r.from.id] = (r.to || []).map(t => t.toObjectId || t.id);
-        }
-      }
-    } catch (e) {
-      console.warn('Association fetch failed:', e.message);
-    }
-
-    // 3. Build enriched meeting objects
-    const dealById = {};
-    if (_cache) _cache.deals.forEach(d => { dealById[d.id] = d; });
-
-    const enriched = await Promise.all(meetings.map(async m => {
-      const p          = m.properties || {};
-      const startMs    = p.hs_meeting_start_time ? parseInt(p.hs_meeting_start_time) : null;
-      const endMs      = p.hs_meeting_end_time   ? parseInt(p.hs_meeting_end_time)   : null;
-      const ownerName  = await resolveOwner(p.hubspot_owner_id || '');
-      const dealIds    = dealIdsByMeeting[m.id] || [];
-      const deal       = dealIds.length ? dealById[dealIds[0]] : null;
-
-      return {
-        id:          m.id,
-        title:       p.hs_meeting_title || '(No title)',
-        startMs,
-        endMs,
-        outcome:     p.hs_meeting_outcome || null,
-        owner:       ownerName,
-        dealId:      deal ? deal.id       : null,
-        dealName:    deal ? deal.dealname : null,
-        dealLives:   deal ? deal.lives    : 0,
-        dealStage:   deal ? deal.stage    : null,
-        dealStageId: deal ? deal.stageId  : null,
-      };
-    }));
-
-    const upcoming = enriched
-      .filter(m => m.startMs && m.startMs >= now && m.startMs <= next7)
-      .sort((a, b) => a.startMs - b.startMs);
-    const recent = enriched
-      .filter(m => m.startMs && m.startMs < now && m.startMs >= past14)
-      .sort((a, b) => b.startMs - a.startMs);
-
-    res.json({ upcoming, recent, fetchedAt: new Date().toISOString() });
+    res.json({ booked, fetchedAt: new Date().toISOString() });
   } catch (e) {
     console.error('Meetings error:', e.message);
     res.status(500).json({ error: e.message });

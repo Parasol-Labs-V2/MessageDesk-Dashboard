@@ -93,11 +93,10 @@ async function renderActivePipeline() {
   // Week-bounded deal activity (computed synchronously from cached data)
   const { wtdStart, lwStart, lwEnd } = wtdBounds();
   function dealMetrics(fromMs, toMs) {
-    // Meetings: use meetingDate (when meeting was scheduled) rather than lastModified + stageId,
-    // since deals often advance past Meeting Booked before the week ends
+    // Meetings: deals moved into Meeting Booked stage within the window
     const meetings = deals.filter(d => {
-      if (!d.meetingDate) return false;
-      const ms = new Date(d.meetingDate + 'T12:00:00').getTime();
+      if (!d.lastModified || d.stageId !== '3467751100') return false;
+      const ms = new Date(d.lastModified).getTime();
       return ms >= fromMs && ms <= toMs;
     }).length;
     // Deals forward: deals in a qualified stage that were last modified in the window
@@ -330,7 +329,7 @@ function renderFunnel() {
 // ══════════════════════════════════════════════════════════════════════════════
 
 async function renderMeetings() {
-  $('panel-3').innerHTML = `<div class="loading-wrap"><div class="spinner"></div><span class="loading-text">Loading meetings from HubSpot…</span></div>`;
+  $('panel-3').innerHTML = `<div class="loading-wrap"><div class="spinner"></div><span class="loading-text">Loading meetings…</span></div>`;
 
   let apiData;
   try {
@@ -342,8 +341,7 @@ async function renderMeetings() {
     return;
   }
 
-  const upcoming = apiData.upcoming || [];
-  const recent   = apiData.recent   || [];
+  const booked = apiData.booked || [];
 
   const WEEKDAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   const MONTHS   = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -354,69 +352,34 @@ async function renderMeetings() {
     return `${WEEKDAYS[d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()}`;
   }
 
-  function fmtMsTime(ms) {
-    if (!ms) return '';
-    return new Date(ms).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-  }
-
-  function engRow(m) {
+  function bookedRow(d) {
     return `<tr>
-      <td class="col-name">${esc(m.title)}</td>
-      <td>${fmtMsDate(m.startMs)}<span style="color:var(--gray);font-size:11px;margin-left:4px">${fmtMsTime(m.startMs)}</span></td>
-      <td>${esc(m.owner)}</td>
-      <td class="col-name">${m.dealName ? esc(m.dealName) : '<span class="dash">—</span>'}</td>
-      <td class="col-num">${m.dealLives ? fmtLives(m.dealLives) : '<span class="dash">—</span>'}</td>
-      <td>${m.dealStageId ? stageBadge(m.dealStageId, m.dealStage) : '<span class="dash">—</span>'}</td>
-      <td>${m.outcome ? `<span class="stage-badge badge-active">${esc(m.outcome)}</span>` : '<span class="dash">—</span>'}</td>
+      <td class="col-name">${esc(d.dealName)}</td>
+      <td>${esc(d.owner)}</td>
+      <td class="col-num">${d.dealLives ? fmtLives(d.dealLives) : '<span class="dash">—</span>'}</td>
+      <td>${fmtSavingsRaw(d.grossSavings)}</td>
+      <td>${esc(d.championName) || '<span class="dash">—</span>'}</td>
+      <td>${fmtMsDate(d.lastModifiedMs)}</td>
     </tr>`;
   }
 
-  function engTable(rows, emptyMsg) {
-    if (!rows.length) return `<div class="empty-state"><div class="empty-icon">📅</div><div class="empty-title">${emptyMsg}</div><div class="empty-sub">Meetings are pulled from HubSpot meeting engagements</div></div>`;
+  function bookedTable(rows) {
+    if (!rows.length) return `<div class="empty-state"><div class="empty-icon">📅</div><div class="empty-title">No deals currently in Meeting Booked stage</div><div class="empty-sub">Deals are shown here when moved to the Meeting Booked stage in HubSpot</div></div>`;
     return `<div class="table-wrap"><div class="tscroll"><table class="deal-table">
       <thead><tr>
-        <th>Meeting Title</th><th>Date &amp; Time</th><th>Owner</th>
-        <th>Practice / Deal</th><th class="col-num">Lives</th><th>Stage</th><th>Outcome</th>
+        <th>Practice Name</th><th>Owner</th><th class="col-num">Lives</th>
+        <th>Gross Savings</th><th>Champion</th><th>Last Updated</th>
       </tr></thead>
-      <tbody>${rows.map(engRow).join('')}</tbody>
+      <tbody>${rows.map(bookedRow).join('')}</tbody>
     </table></div></div>`;
   }
 
-  // Also show deal-level meeting_date as a fallback supplemental section
-  const dealMeetings = (_data && _data.deals || []).filter(d => d.meetingDate);
-
   $('panel-3').innerHTML = `
     <div class="section-header">
-      <h2 class="section-title">Meetings — Next 7 Days</h2>
-      <span class="badge">${upcoming.length}</span>
+      <h2 class="section-title">Deals in Meeting Booked Stage</h2>
+      <span class="badge">${booked.length}</span>
     </div>
-    ${engTable(upcoming, 'No meetings scheduled in the next 7 days')}
-
-    <div class="section-header" style="margin-top:28px">
-      <h2 class="section-title">Recent Meetings — Past 14 Days</h2>
-      <span class="badge">${recent.length}</span>
-    </div>
-    ${engTable(recent, 'No meetings in the past 14 days')}
-
-    ${dealMeetings.length ? `
-    <div class="section-header" style="margin-top:28px">
-      <h2 class="section-title">Deals with Meeting Date Set</h2>
-      <span class="badge">${dealMeetings.length}</span>
-    </div>
-    <div class="table-wrap"><div class="tscroll"><table class="deal-table">
-      <thead><tr>
-        <th>Practice Name</th><th>Meeting Date</th><th>Owner</th>
-        <th class="col-num">Lives</th><th>Stage</th><th>Champion</th>
-      </tr></thead>
-      <tbody>${dealMeetings.sort((a,b) => (a.meetingDate||'').localeCompare(b.meetingDate||'')).map(d => `<tr>
-        <td class="col-name">${esc(d.dealname)}</td>
-        <td>${fmtDate(d.meetingDate)}</td>
-        <td>${esc(d.owner)}</td>
-        <td class="col-num">${fmtLives(d.lives)}</td>
-        <td>${stageBadge(d.stageId, d.stage)}</td>
-        <td>${esc(d.championName) || '<span class="dash">—</span>'}</td>
-      </tr>`).join('')}</tbody>
-    </table></div></div>` : ''}
+    ${bookedTable(booked)}
   `;
 }
 
