@@ -339,7 +339,7 @@ tbody td { padding: 10px 12px; font-size: 13px; vertical-align: middle; }
   <div class="tabs-inner">
     <button class="tab-btn active" onclick="switchTab(0)">🔴 Active Pipeline</button>
     <button class="tab-btn"        onclick="switchTab(1)">📊 Funnel Overview</button>
-    <button class="tab-btn"        onclick="switchTab(2)">📅 Scheduled Meetings</button>
+    <button class="tab-btn"        onclick="switchTab(2)">📅 Meetings This Week</button>
     <button class="tab-btn"        onclick="switchTab(3)">📈 WoW Changes</button>
     <button class="tab-btn"        onclick="switchTab(4)">🔍 2K+ Pipeline Review</button>
     <button class="tab-btn"        onclick="switchTab(5)">📋 All Deals</button>
@@ -364,7 +364,7 @@ tbody td { padding: 10px 12px; font-size: 13px; vertical-align: middle; }
   </div>
 </div>
 
-<!-- Tab 2 — Scheduled Meetings -->
+<!-- Tab 2 — Meetings Next Week -->
 <div class="tab-panel" id="panel-2">
   <div class="loading-wrap">
     <div class="spinner"></div>
@@ -926,21 +926,30 @@ async function renderMeetings() {
     $('panel-2').innerHTML = `<div class="error-box">⚠ Could not load meetings: ${e.message}</div>`; return;
   }
 
-  const meetings = data.meetings || [];
+  const meetings   = data.meetings || [];
+  const weekStart  = data.week_start || '';
+  const weekEnd    = data.week_end   || '';
+  const fmtRange   = (s, e) => {
+    const opts = { month:'short', day:'numeric' };
+    const sd   = s ? new Date(s + 'T12:00:00') : null;
+    const ed   = e ? new Date(e + 'T12:00:00') : null;
+    if (!sd || !ed) return '';
+    return `${sd.toLocaleDateString('en-US',opts)} – ${ed.toLocaleDateString('en-US',opts)}`;
+  };
+  const range = fmtRange(weekStart, weekEnd);
 
+  // Group by day
   const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   const MONS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-
-  // Group by day (meetings without a date go into an "Unknown Date" bucket)
-  const NO_DATE_KEY = '0000-00-00';
   const byDay = {};
   meetings.forEach(m => {
-    const key = m.demo_date || NO_DATE_KEY;
+    const dt  = new Date((m.demo_date || weekStart) + 'T12:00:00');
+    const key = dt.toISOString().split('T')[0];
     if (!byDay[key]) byDay[key] = [];
-    byDay[key].push(m);
+    byDay[key].push({ ...m, _dt: dt });
   });
 
-  // Pipeline at stake
+  // Pipeline at stake — try to match meeting lead_id to dashboard deals
   const dealByLead = {};
   (dashData?.deals || []).forEach(d => { if (d.lead_id) dealByLead[d.lead_id] = d; });
   const pipelineSum = meetings.reduce((s, m) => {
@@ -951,28 +960,22 @@ async function renderMeetings() {
   // Busiest day
   let busiestDay = '', busiestCount = 0;
   Object.entries(byDay).forEach(([k, arr]) => {
-    if (k !== NO_DATE_KEY && arr.length > busiestCount) { busiestCount = arr.length; busiestDay = k; }
+    if (arr.length > busiestCount) { busiestCount = arr.length; busiestDay = k; }
   });
-  const bDayLabel = busiestDay ? new Date(busiestDay + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long' }) : '—';
+  const bDayLabel = busiestDay ? new Date(busiestDay+'T12:00:00').toLocaleDateString('en-US',{weekday:'long'}) : '—';
 
-  const dayHTML = Object.keys(byDay).sort().reverse().map(key => {
-    const arr = byDay[key];
-    let dayLbl;
-    if (key === NO_DATE_KEY) {
-      dayLbl = `NO DATE SET — ${arr.length} meeting${arr.length !== 1 ? 's' : ''}`;
-    } else {
-      const dt = new Date(key + 'T12:00:00');
-      dayLbl = `${DAYS[dt.getDay()].toUpperCase()}, ${MONS[dt.getMonth()].toUpperCase()} ${dt.getDate()}, ${dt.getFullYear()} — ${arr.length} meeting${arr.length !== 1 ? 's' : ''}`;
-    }
-    const cards = arr.map(m => {
+  const dayHTML = Object.keys(byDay).sort().map(key => {
+    const arr    = byDay[key];
+    const dt     = new Date(key + 'T12:00:00');
+    const dayLbl = `${DAYS[dt.getDay()].toUpperCase()}, ${MONS[dt.getMonth()].toUpperCase()} ${dt.getDate()}, ${dt.getFullYear()} — ${arr.length} meeting${arr.length!==1?'s':''}`;
+    const cards  = arr.map(m => {
       const deal = dealByLead[m.lead_id];
       const val  = deal ? fmtFull(deal.monthly_value) + '/mo' : '—';
       const note = m.note || (deal ? 'Deal in pipeline' : 'New lead — first meeting');
-      const dt   = m.demo_date ? new Date(m.demo_date + 'T12:00:00') : null;
       return `<div class="meeting-card">
         <div class="mtg-date-box">
-          <div class="mtg-day">${dt ? dt.getDate() : '?'}</div>
-          <div class="mtg-mon">${dt ? MONS[dt.getMonth()] : '—'}</div>
+          <div class="mtg-day">${dt.getDate()}</div>
+          <div class="mtg-mon">${MONS[dt.getMonth()]}</div>
         </div>
         <div class="mtg-info">
           <div class="mtg-company">${m.lead_name || m.contact_name || 'Unknown'}</div>
@@ -987,16 +990,17 @@ async function renderMeetings() {
   $('panel-2').innerHTML = `
     <div class="alert-bar">
       <div class="blink-dot"></div>
-      <div><strong>${meetings.length}</strong> total scheduled
+      <div><strong>${meetings.length}</strong> meetings scheduled
+        &nbsp;·&nbsp; ${range}
         &nbsp;·&nbsp; <strong>${busiestCount}</strong> on ${bDayLabel}
         &nbsp;·&nbsp; Combined pipeline: <strong>${fmtMRR(pipelineSum)}/mo</strong>
       </div>
     </div>
     <div class="kpi-grid cols3" style="margin-bottom:24px">
       <div class="kpi-card blue">
-        <div class="kpi-label">Total Scheduled</div>
+        <div class="kpi-label">Total Meetings</div>
         <div class="kpi-value">${meetings.length}</div>
-        <div class="kpi-sub">demo_status = Scheduled</div>
+        <div class="kpi-sub">${range}</div>
       </div>
       <div class="kpi-card yellow">
         <div class="kpi-label">Busiest Day</div>
@@ -1009,7 +1013,7 @@ async function renderMeetings() {
         <div class="kpi-sub">monthly recurring</div>
       </div>
     </div>
-    ${meetings.length ? dayHTML : '<div class="empty-state">No deals with Scheduled status found.</div>'}
+    ${meetings.length ? dayHTML : '<div class="empty-state">No meetings scheduled for next week.</div>'}
   `;
 }
 

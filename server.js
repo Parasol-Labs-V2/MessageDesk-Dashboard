@@ -363,16 +363,23 @@ async function getMeetings() {
   await ensureData();
   const deals = (_cache && _cache.deals) || [];
 
+  const now    = new Date();
+  const day    = now.getDay();
+  // Current week's Monday (not next week's): Mon=0 days back, Tue=1, …, Sun=6
+  const daysFromMon = day === 0 ? 6 : day - 1;
+  const mon    = new Date(now); mon.setDate(now.getDate() - daysFromMon); mon.setHours(0,0,0,0);
+  const sun    = new Date(mon); sun.setDate(mon.getDate() + 6);     sun.setHours(23,59,59,999);
+  const fmt    = d => d.toISOString().split('T')[0];
+  const weekStart = fmt(mon), weekEnd = fmt(sun);
+
   const allScheduled = deals.filter(d => d.demo_status === 'Scheduled');
   console.log(`Deals with demo_status=Scheduled: ${allScheduled.length}`);
-  allScheduled.slice(0, 5).forEach(d =>
+  allScheduled.slice(0,5).forEach(d =>
     console.log(`  ${d.company} | date=${d.demo_date} | stage=${d.stage}`)
   );
 
-  // Show all scheduled deals sorted by demo_date descending (no date filter —
-  // the team doesn't reliably update demo_date when scheduling new meetings)
   const meetings = allScheduled
-    .sort((a, b) => (b.demo_date || '').localeCompare(a.demo_date || ''))
+    .filter(d => d.demo_date && d.demo_date >= weekStart && d.demo_date <= weekEnd)
     .map(d => ({
       lead_id: d.lead_id, lead_name: d.company,
       demo_date: d.demo_date, demo_status: d.demo_status,
@@ -380,8 +387,8 @@ async function getMeetings() {
       note: '',
     }));
 
-  console.log(`Total scheduled meetings: ${meetings.length}`);
-  return { meetings };
+  console.log(`Meetings ${weekStart}–${weekEnd}: ${meetings.length}`);
+  return { meetings, week_start: weekStart, week_end: weekEnd };
 }
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
