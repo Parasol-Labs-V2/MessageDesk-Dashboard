@@ -104,13 +104,16 @@ const DEMO_DATE_RE = /^\d{4}-\d{2}-\d{2}/;
 let _oppFieldIds = null;
 
 function detectOppFields(opps) {
-  if (_oppFieldIds) return _oppFieldIds;
+  // Use !== null so an empty {} result doesn't permanently block re-detection
+  if (_oppFieldIds !== null) return _oppFieldIds;
   const ids = {};
   for (const opp of opps) {
     const c = extractOppCustom(opp);
     for (const [k, v] of Object.entries(c)) {
       if (!ids.demo_status && typeof v === 'string' && DEMO_STATUS_VALS.has(v)) ids.demo_status = k;
-      if (!ids.demo_date   && typeof v === 'string' && DEMO_DATE_RE.test(v))    ids.demo_date   = k;
+      // Accept both ISO string dates and numeric Unix timestamps
+      if (!ids.demo_date && typeof v === 'string' && DEMO_DATE_RE.test(v)) ids.demo_date = k;
+      if (!ids.demo_date && typeof v === 'number' && v > 0) ids.demo_date = k;
     }
     if (ids.demo_status && ids.demo_date) break;
   }
@@ -120,11 +123,15 @@ function detectOppFields(opps) {
 }
 
 function parseDemoDate(v) {
-  if (!v) return null;
+  if (!v && v !== 0) return null;
   if (typeof v === 'number') {
-    const d = new Date(v); return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0];
+    // Close.io may return Unix timestamps in seconds (<1e10) or milliseconds (>=1e10)
+    const ms = v < 1e10 ? v * 1000 : v;
+    const d = new Date(ms);
+    return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0];
   }
-  const d = new Date(v); return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0];
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0];
 }
 
 // ─── Fetch all Parasol pipeline opportunities (includes opp custom fields) ─────
@@ -454,6 +461,44 @@ app.get('/api/debug/lost-reasons', async (req, res) => {
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+// Debug: show meetings detection state — field IDs, scheduled deals, raw custom values
+app.get('/api/debug/meetings', async (req, res) => {
+  try {
+    await ensureData();
+    const deals = (_cache && _cache.deals) || [];
+    const now = new Date();
+    const day = now.getDay();
+    const daysFromMon = day === 0 ? 6 : day - 1;
+    const mon = new Date(now); mon.setDate(now.getDate() - daysFromMon); mon.setHours(0,0,0,0);
+    const sun = new Date(mon); sun.setDate(mon.getDate() + 6); sun.setHours(23,59,59,999);
+    const fmt = d => d.toISOString().split('T')[0];
+    const weekStart = fmt(mon), weekEnd = fmt(sun);
+
+    const scheduled = deals.filter(d => d.demo_status === 'Scheduled');
+    const thisWeek  = scheduled.filter(d => d.demo_date && d.demo_date >= weekStart && d.demo_date <= weekEnd);
+
+    // Fetch raw custom fields from first 3 opps to show actual field keys/values
+    const sampleRaw = await Promise.all(deals.slice(0,5).map(async d => {
+      const r = await fetch(`https://api.close.com/api/v1/opportunity/${d.id}/?_fields=id,lead_name,custom`, { headers: authHeaders() });
+      if (!r.ok) return { id: d.id, error: r.status };
+      const opp = await r.json();
+      return { id: opp.id, lead_name: opp.lead_name, extracted: extractOppCustom(opp) };
+    }));
+
+    res.json({
+      server_time: now.toISOString(),
+      week: { start: weekStart, end: weekEnd },
+      detected_field_ids: _oppFieldIds,
+      total_deals: deals.length,
+      scheduled_count: scheduled.length,
+      this_week_count: thisWeek.length,
+      scheduled_deals: scheduled.map(d => ({ company: d.company, demo_date: d.demo_date, demo_status: d.demo_status })),
+      raw_opp_custom_sample: sampleRaw,
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 
 // Debug: raw lead by ID
 app.get('/api/debug/lead/:id', async (req, res) => {
