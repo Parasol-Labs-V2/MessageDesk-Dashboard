@@ -365,7 +365,7 @@ async function getMeetings() {
 
   // Filter by demo_date window: 7 days ago → 14 days from now.
   // Intentionally ignores demo_status — the team doesn't reliably mark meetings
-  // as Completed, so 80+ old "Scheduled" records pile up. Date-based filtering
+  // as Completed, so stale "Scheduled" records pile up. Date-based filtering
   // surfaces the relevant window regardless of status hygiene.
   const fmt    = d => d.toISOString().split('T')[0];
   const now    = new Date();

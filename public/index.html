@@ -364,7 +364,7 @@ tbody td { padding: 10px 12px; font-size: 13px; vertical-align: middle; }
   </div>
 </div>
 
-<!-- Tab 2 — Scheduled Meetings -->
+<!-- Tab 2 — Meetings Next Week -->
 <div class="tab-panel" id="panel-2">
   <div class="loading-wrap">
     <div class="spinner"></div>
@@ -926,8 +926,8 @@ async function renderMeetings() {
     $('panel-2').innerHTML = `<div class="error-box">⚠ Could not load meetings: ${e.message}</div>`; return;
   }
 
-  const meetings    = data.meetings || [];
-  const today       = data.today || new Date().toISOString().split('T')[0];
+  const meetings = data.meetings || [];
+  const today    = data.today || new Date().toISOString().split('T')[0];
 
   const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   const MONS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -958,14 +958,14 @@ async function renderMeetings() {
   const bDayLabel = busiestDay ? new Date(busiestDay + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long' }) : '—';
 
   const dayHTML = Object.keys(byDay).sort().map(key => {
-    const arr      = byDay[key];
-    const dt       = new Date(key + 'T12:00:00');
+    const arr        = byDay[key];
+    const dt         = new Date(key + 'T12:00:00');
     const isUpcoming = key >= today;
     const statusTag  = isUpcoming ? '🗓 UPCOMING' : '✓ RECENT';
-    const dayLbl   = `${statusTag} · ${DAYS[dt.getDay()].toUpperCase()}, ${MONS[dt.getMonth()].toUpperCase()} ${dt.getDate()}, ${dt.getFullYear()} — ${arr.length} meeting${arr.length !== 1 ? 's' : ''}`;
-    const cards    = arr.map(m => {
-      const deal = dealByLead[m.lead_id];
-      const val  = deal ? fmtFull(deal.monthly_value) + '/mo' : '—';
+    const dayLbl     = `${statusTag} · ${DAYS[dt.getDay()].toUpperCase()}, ${MONS[dt.getMonth()].toUpperCase()} ${dt.getDate()}, ${dt.getFullYear()} — ${arr.length} meeting${arr.length !== 1 ? 's' : ''}`;
+    const cards      = arr.map(m => {
+      const deal       = dealByLead[m.lead_id];
+      const val        = deal ? fmtFull(deal.monthly_value) + '/mo' : '—';
       const statusNote = m.demo_status ? `Status: ${m.demo_status}` : (deal ? 'Deal in pipeline' : 'New lead');
       return `<div class="meeting-card" style="${!isUpcoming ? 'opacity:0.65' : ''}">
         <div class="mtg-date-box" style="background:${isUpcoming ? '#EFF6FF' : '#F3F4F6'}">
