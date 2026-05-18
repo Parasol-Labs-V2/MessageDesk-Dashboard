@@ -926,60 +926,55 @@ async function renderMeetings() {
     $('panel-2').innerHTML = `<div class="error-box">⚠ Could not load meetings: ${e.message}</div>`; return;
   }
 
-  const meetings   = data.meetings || [];
-  const weekStart  = data.week_start || '';
-  const weekEnd    = data.week_end   || '';
-  const fmtRange   = (s, e) => {
-    const opts = { month:'short', day:'numeric' };
-    const sd   = s ? new Date(s + 'T12:00:00') : null;
-    const ed   = e ? new Date(e + 'T12:00:00') : null;
-    if (!sd || !ed) return '';
-    return `${sd.toLocaleDateString('en-US',opts)} – ${ed.toLocaleDateString('en-US',opts)}`;
-  };
-  const range = fmtRange(weekStart, weekEnd);
+  const meetings = data.meetings || [];
+  const today    = data.today || new Date().toISOString().split('T')[0];
 
-  // Group by day
   const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   const MONS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  const upcoming = meetings.filter(m => m.upcoming);
+  const recent   = meetings.filter(m => !m.upcoming);
+
+  // Group by day, sorted ascending (soonest first via server sort)
   const byDay = {};
   meetings.forEach(m => {
-    const dt  = new Date((m.demo_date || weekStart) + 'T12:00:00');
-    const key = dt.toISOString().split('T')[0];
-    if (!byDay[key]) byDay[key] = [];
-    byDay[key].push({ ...m, _dt: dt });
+    if (!byDay[m.demo_date]) byDay[m.demo_date] = [];
+    byDay[m.demo_date].push(m);
   });
 
-  // Pipeline at stake — try to match meeting lead_id to dashboard deals
+  // Pipeline at stake (upcoming only)
   const dealByLead = {};
   (dashData?.deals || []).forEach(d => { if (d.lead_id) dealByLead[d.lead_id] = d; });
-  const pipelineSum = meetings.reduce((s, m) => {
+  const pipelineSum = upcoming.reduce((s, m) => {
     const d = dealByLead[m.lead_id];
     return s + (d ? d.monthly_value : 0);
   }, 0);
 
-  // Busiest day
+  // Busiest upcoming day
   let busiestDay = '', busiestCount = 0;
   Object.entries(byDay).forEach(([k, arr]) => {
-    if (arr.length > busiestCount) { busiestCount = arr.length; busiestDay = k; }
+    if (k >= today && arr.length > busiestCount) { busiestCount = arr.length; busiestDay = k; }
   });
-  const bDayLabel = busiestDay ? new Date(busiestDay+'T12:00:00').toLocaleDateString('en-US',{weekday:'long'}) : '—';
+  const bDayLabel = busiestDay ? new Date(busiestDay + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long' }) : '—';
 
   const dayHTML = Object.keys(byDay).sort().map(key => {
-    const arr    = byDay[key];
-    const dt     = new Date(key + 'T12:00:00');
-    const dayLbl = `${DAYS[dt.getDay()].toUpperCase()}, ${MONS[dt.getMonth()].toUpperCase()} ${dt.getDate()}, ${dt.getFullYear()} — ${arr.length} meeting${arr.length!==1?'s':''}`;
-    const cards  = arr.map(m => {
-      const deal = dealByLead[m.lead_id];
-      const val  = deal ? fmtFull(deal.monthly_value) + '/mo' : '—';
-      const note = m.note || (deal ? 'Deal in pipeline' : 'New lead — first meeting');
-      return `<div class="meeting-card">
-        <div class="mtg-date-box">
+    const arr        = byDay[key];
+    const dt         = new Date(key + 'T12:00:00');
+    const isUpcoming = key >= today;
+    const statusTag  = isUpcoming ? '🗓 UPCOMING' : '✓ RECENT';
+    const dayLbl     = `${statusTag} · ${DAYS[dt.getDay()].toUpperCase()}, ${MONS[dt.getMonth()].toUpperCase()} ${dt.getDate()}, ${dt.getFullYear()} — ${arr.length} meeting${arr.length !== 1 ? 's' : ''}`;
+    const cards      = arr.map(m => {
+      const deal       = dealByLead[m.lead_id];
+      const val        = deal ? fmtFull(deal.monthly_value) + '/mo' : '—';
+      const statusNote = m.demo_status ? `Status: ${m.demo_status}` : (deal ? 'Deal in pipeline' : 'New lead');
+      return `<div class="meeting-card" style="${!isUpcoming ? 'opacity:0.65' : ''}">
+        <div class="mtg-date-box" style="background:${isUpcoming ? '#EFF6FF' : '#F3F4F6'}">
           <div class="mtg-day">${dt.getDate()}</div>
           <div class="mtg-mon">${MONS[dt.getMonth()]}</div>
         </div>
         <div class="mtg-info">
-          <div class="mtg-company">${m.lead_name || m.contact_name || 'Unknown'}</div>
-          <div class="mtg-note">${note}</div>
+          <div class="mtg-company">${m.lead_name || 'Unknown'}</div>
+          <div class="mtg-note">${statusNote}</div>
         </div>
         <div class="mtg-val">${val}</div>
       </div>`;
@@ -990,30 +985,28 @@ async function renderMeetings() {
   $('panel-2').innerHTML = `
     <div class="alert-bar">
       <div class="blink-dot"></div>
-      <div><strong>${meetings.length}</strong> meetings scheduled
-        &nbsp;·&nbsp; ${range}
-        &nbsp;·&nbsp; <strong>${busiestCount}</strong> on ${bDayLabel}
-        &nbsp;·&nbsp; Combined pipeline: <strong>${fmtMRR(pipelineSum)}/mo</strong>
+      <div><strong>${upcoming.length}</strong> upcoming &nbsp;·&nbsp; <strong>${recent.length}</strong> recent (last 7 days)
+        &nbsp;·&nbsp; Upcoming pipeline: <strong>${fmtMRR(pipelineSum)}/mo</strong>
       </div>
     </div>
     <div class="kpi-grid cols3" style="margin-bottom:24px">
       <div class="kpi-card blue">
-        <div class="kpi-label">Total Meetings</div>
-        <div class="kpi-value">${meetings.length}</div>
-        <div class="kpi-sub">${range}</div>
+        <div class="kpi-label">Upcoming Meetings</div>
+        <div class="kpi-value">${upcoming.length}</div>
+        <div class="kpi-sub">next 14 days</div>
       </div>
       <div class="kpi-card yellow">
-        <div class="kpi-label">Busiest Day</div>
-        <div class="kpi-value">${busiestCount}</div>
-        <div class="kpi-sub">${bDayLabel}</div>
+        <div class="kpi-label">Recent Meetings</div>
+        <div class="kpi-value">${recent.length}</div>
+        <div class="kpi-sub">last 7 days</div>
       </div>
       <div class="kpi-card red">
-        <div class="kpi-label">Pipeline at Stake</div>
+        <div class="kpi-label">Upcoming Pipeline</div>
         <div class="kpi-value">${fmtMRR(pipelineSum)}</div>
         <div class="kpi-sub">monthly recurring</div>
       </div>
     </div>
-    ${meetings.length ? dayHTML : '<div class="empty-state">No meetings scheduled for next week.</div>'}
+    ${meetings.length ? dayHTML : '<div class="empty-state">No meetings with demo_date in the ±7–14 day window.</div>'}
   `;
 }
 
