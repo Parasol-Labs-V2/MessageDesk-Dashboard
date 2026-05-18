@@ -358,41 +358,24 @@ async function buildPipelineReviewData(force = false) {
   };
 }
 
-// ─── Meetings — reads demo_date/demo_status from opp-level data ───────────────
+// ─── Meetings — demo_status = Scheduled AND demo_date >= today ────────────────
 async function getMeetings() {
   await ensureData();
   const deals = (_cache && _cache.deals) || [];
 
-  // Filter by demo_date window: 7 days ago → 14 days from now.
-  // Ignores demo_status — team doesn't reliably mark meetings as Completed,
-  // so filtering on status causes stale records to pile up indefinitely.
-  const fmt    = d => d.toISOString().split('T')[0];
-  const now    = new Date();
-  const past   = new Date(now); past.setDate(now.getDate() - 7);
-  const future = new Date(now); future.setDate(now.getDate() + 14);
-  const windowStart = fmt(past);
-  const windowEnd   = fmt(future);
-  const today       = fmt(now);
+  const today = new Date().toISOString().split('T')[0];
 
-  const withDate = deals.filter(d => d.demo_date);
-  console.log(`Deals with demo_date set: ${withDate.length}`);
-  withDate.slice(0, 5).forEach(d =>
-    console.log(`  ${d.company} | date=${d.demo_date} | status=${d.demo_status}`)
-  );
-
-  const meetings = withDate
-    .filter(d => d.demo_date >= windowStart && d.demo_date <= windowEnd)
+  const meetings = deals
+    .filter(d => d.demo_status === 'Scheduled' && d.demo_date && d.demo_date >= today)
     .sort((a, b) => a.demo_date.localeCompare(b.demo_date))
     .map(d => ({
       lead_id: d.lead_id, lead_name: d.company,
       demo_date: d.demo_date, demo_status: d.demo_status,
       monthly_value: d.monthly_value, stage: d.stage,
-      upcoming: d.demo_date >= today,
-      note: '',
     }));
 
-  console.log(`Meetings in window ${windowStart}–${windowEnd}: ${meetings.length}`);
-  return { meetings, window_start: windowStart, window_end: windowEnd, today };
+  console.log(`Upcoming scheduled meetings (>= ${today}): ${meetings.length}`);
+  return { meetings, today };
 }
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
