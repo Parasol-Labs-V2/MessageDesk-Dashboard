@@ -363,25 +363,37 @@ async function getMeetings() {
   await ensureData();
   const deals = (_cache && _cache.deals) || [];
 
-  const allScheduled = deals.filter(d => d.demo_status === 'Scheduled');
-  console.log(`Deals with demo_status=Scheduled: ${allScheduled.length}`);
-  allScheduled.slice(0, 5).forEach(d =>
-    console.log(`  ${d.company} | date=${d.demo_date} | stage=${d.stage}`)
+  // Filter by demo_date window: 7 days ago → 14 days from now.
+  // Intentionally ignores demo_status — the team doesn't reliably mark meetings
+  // as Completed, so 80+ old "Scheduled" records pile up. Date-based filtering
+  // surfaces the relevant window regardless of status hygiene.
+  const fmt    = d => d.toISOString().split('T')[0];
+  const now    = new Date();
+  const past   = new Date(now); past.setDate(now.getDate() - 7);
+  const future = new Date(now); future.setDate(now.getDate() + 14);
+  const windowStart = fmt(past);
+  const windowEnd   = fmt(future);
+  const today       = fmt(now);
+
+  const withDate = deals.filter(d => d.demo_date);
+  console.log(`Deals with demo_date set: ${withDate.length}`);
+  withDate.slice(0, 5).forEach(d =>
+    console.log(`  ${d.company} | date=${d.demo_date} | status=${d.demo_status}`)
   );
 
-  // Show all scheduled deals sorted by demo_date descending (no date filter —
-  // the team doesn't reliably update demo_date when scheduling new meetings)
-  const meetings = allScheduled
-    .sort((a, b) => (b.demo_date || '').localeCompare(a.demo_date || ''))
+  const meetings = withDate
+    .filter(d => d.demo_date >= windowStart && d.demo_date <= windowEnd)
+    .sort((a, b) => a.demo_date.localeCompare(b.demo_date))
     .map(d => ({
       lead_id: d.lead_id, lead_name: d.company,
       demo_date: d.demo_date, demo_status: d.demo_status,
       monthly_value: d.monthly_value, stage: d.stage,
+      upcoming: d.demo_date >= today,
       note: '',
     }));
 
-  console.log(`Total scheduled meetings: ${meetings.length}`);
-  return { meetings };
+  console.log(`Meetings in window ${windowStart}–${windowEnd}: ${meetings.length}`);
+  return { meetings, window_start: windowStart, window_end: windowEnd, today };
 }
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
