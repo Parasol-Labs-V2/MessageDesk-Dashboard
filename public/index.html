@@ -1012,68 +1012,110 @@ function renderWoW() {
   const lostThis = ch.lost_this_week       || [];
   const lostLast = ch.lost_last_week       || [];
   const onbThis  = ch.onboarding_this_week || [];
+  const onbLast  = ch.onboarding_last_week || [];
   const chmpThis = ch.champion_this_week   || [];
+  const chmpLast = ch.champion_last_week   || [];
   const actUpd   = ch.active_updated       || [];
 
-  const delta = (curr, prev) => {
+  const wkLabel   = ch.week_label      || 'This week';
+  const lastLabel = ch.last_week_label || 'Last week';
+
+  const mrrSum = arr => arr.reduce((s, d) => s + (d.monthly_value || 0), 0);
+  const fmtK   = v => v >= 1000 ? `$${(v/1000).toFixed(1)}K` : `$${Math.round(v)}`;
+
+  const delta = (curr, prev, higherIsBetter = true) => {
     const d = curr - prev;
-    if (d === 0) return '<span class="delta neu">0</span>';
-    const cls = d > 0 ? 'pos' : 'neg';
-    return `<span class="delta ${cls}">${d > 0 ? '+' : ''}${d}</span>`;
+    if (d === 0) return '<span class="delta neu">—</span>';
+    const positive = higherIsBetter ? d > 0 : d < 0;
+    const cls = positive ? 'pos' : 'neg';
+    const arrow = d > 0 ? '▲' : '▼';
+    return `<span class="delta ${cls}">${arrow} ${Math.abs(d)}</span>`;
+  };
+
+  // Comparison row helper: "X deals · $Y.YK vs Z deals · $W.WK  [delta]"
+  const cmpRow = (label, thisArr, lastArr, higherIsBetter = true) => {
+    const tc = thisArr.length, lc = lastArr.length;
+    const tm = mrrSum(thisArr),  lm = mrrSum(lastArr);
+    const hasMrr = tm > 0 || lm > 0;
+    const thisTxt = hasMrr ? `${tc} deals · ${fmtK(tm)} MRR` : `${tc} deals`;
+    const lastTxt = hasMrr ? `${lc} deals · ${fmtK(lm)} MRR` : `${lc} deals`;
+    return `
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--gray-border)">
+        <div style="width:130px;font-size:12px;font-weight:600;flex-shrink:0;color:var(--black)">${label}</div>
+        <div style="flex:1;font-size:12px">
+          <span style="font-weight:700">${thisTxt}</span>
+          <span style="color:var(--gray)"> vs ${lastTxt} last week</span>
+        </div>
+        <div style="flex-shrink:0">${delta(tc, lc, higherIsBetter)}</div>
+      </div>`;
   };
 
   const movements = [
-    { label: 'New Added',      count: newThis.length,  color: '#00695C' },
-    { label: '→ Closed Won',   count: wonThis.length,  color: '#16A34A' },
-    { label: '→ Closed Lost',  count: lostThis.length, color: '#E8231A' },
-    { label: '→ Onboarding',   count: onbThis.length,  color: '#7C3AED' },
-    { label: '→ Champion',     count: chmpThis.length, color: '#F5C800' },
-    { label: 'Active Updated', count: actUpd.length,   color: '#1B9BF0' },
+    { label: 'New Added',      thisC: newThis.length,  lastC: newLast.length,  color: '#00695C' },
+    { label: '→ Closed Won',   thisC: wonThis.length,  lastC: wonLast.length,  color: '#16A34A' },
+    { label: '→ Closed Lost',  thisC: lostThis.length, lastC: lostLast.length, color: '#E8231A' },
+    { label: '→ Onboarding',   thisC: onbThis.length,  lastC: onbLast.length,  color: '#7C3AED' },
+    { label: '→ Champion',     thisC: chmpThis.length, lastC: chmpLast.length, color: '#F5C800' },
+    { label: 'Active Updated', thisC: actUpd.length,   lastC: 0,               color: '#1B9BF0' },
   ];
-  const maxMov = Math.max(...movements.map(m => m.count), 1);
+  const maxMov = Math.max(...movements.map(m => Math.max(m.thisC, m.lastC)), 1);
 
   const movRows = movements.map(m => `
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-      <div style="width:130px;font-size:12px;font-weight:500;flex-shrink:0">${m.label}</div>
-      <div style="flex:1;background:var(--gray-light);border-radius:4px;height:10px;overflow:hidden">
-        <div style="height:100%;width:${Math.round(m.count/maxMov*100)}%;background:${m.color};border-radius:4px"></div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+      <div style="width:120px;font-size:12px;font-weight:500;flex-shrink:0">${m.label}</div>
+      <div style="flex:1">
+        <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px">
+          <div style="flex:1;background:var(--gray-light);border-radius:4px;height:8px;overflow:hidden">
+            <div style="height:100%;width:${Math.round(m.thisC/maxMov*100)}%;background:${m.color};border-radius:4px"></div>
+          </div>
+          <div style="width:28px;text-align:right;font-size:11px;font-weight:700;color:var(--black)">${m.thisC}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:4px">
+          <div style="flex:1;background:var(--gray-light);border-radius:4px;height:8px;overflow:hidden">
+            <div style="height:100%;width:${Math.round(m.lastC/maxMov*100)}%;background:${m.color};opacity:0.35;border-radius:4px"></div>
+          </div>
+          <div style="width:28px;text-align:right;font-size:11px;color:var(--gray)">${m.lastC}</div>
+        </div>
       </div>
-      <div style="min-width:24px;text-align:right;font-size:12px;font-weight:700;color:var(--gray)">${m.count}</div>
     </div>`).join('');
 
   const wonRows = wonThis.slice(0,20).map(d => `<tr>
     <td class="col-company">${d.company}</td>
     <td class="mono">${d.monthly_value > 0 ? fmtFull(d.monthly_value)+'/mo' : '—'}</td>
     <td style="font-size:11px;color:var(--gray)">${d.date_updated ? d.date_updated.slice(0,10) : '—'}</td>
-  </tr>`).join('') || `<tr><td colspan="3" class="empty-state">No closed won deals in last 7 days</td></tr>`;
+  </tr>`).join('') || `<tr><td colspan="3" class="empty-state">No closed won deals this week</td></tr>`;
 
-  const newRows = newThis.sort((a,b) => b.monthly_value - a.monthly_value).slice(0,20).map(d => `<tr>
+  const newRows = newThis.slice().sort((a,b) => b.monthly_value - a.monthly_value).slice(0,20).map(d => `<tr>
     <td class="col-company">${d.company}</td>
     <td class="mono">${d.monthly_value > 0 ? fmtFull(d.monthly_value)+'/mo' : '—'}</td>
     <td>${stageBadge(d.category, d.stage)}</td>
-  </tr>`).join('') || `<tr><td colspan="3" class="empty-state">No new deals added in last 7 days</td></tr>`;
+  </tr>`).join('') || `<tr><td colspan="3" class="empty-state">No new deals added this week</td></tr>`;
 
   $('panel-3').innerHTML = `
     <div class="kpi-grid">
       <div class="kpi-card blue">
         <div class="kpi-label">New Added This Week</div>
         <div class="kpi-value">${newThis.length} ${delta(newThis.length, newLast.length)}</div>
-        <div class="kpi-prev">${newLast.length} added last week</div>
+        <div class="kpi-sub">${fmtK(mrrSum(newThis))} MRR · ${newThis.length} deals</div>
+        <div class="kpi-prev">vs ${newLast.length} deals · ${fmtK(mrrSum(newLast))} last week</div>
       </div>
       <div class="kpi-card green">
         <div class="kpi-label">Closed Won This Week</div>
         <div class="kpi-value">${wonThis.length} ${delta(wonThis.length, wonLast.length)}</div>
-        <div class="kpi-prev">${wonLast.length} closed won last week</div>
+        <div class="kpi-sub">${fmtK(mrrSum(wonThis))} MRR · ${wonThis.length} deals</div>
+        <div class="kpi-prev">vs ${wonLast.length} deals · ${fmtK(mrrSum(wonLast))} last week</div>
       </div>
       <div class="kpi-card red">
         <div class="kpi-label">Closed Lost This Week</div>
-        <div class="kpi-value">${lostThis.length} ${delta(lostThis.length, lostLast.length)}</div>
-        <div class="kpi-prev">${lostLast.length} closed lost last week</div>
+        <div class="kpi-value">${lostThis.length} ${delta(lostThis.length, lostLast.length, false)}</div>
+        <div class="kpi-sub">${fmtK(mrrSum(lostThis))} MRR · ${lostThis.length} deals</div>
+        <div class="kpi-prev">vs ${lostLast.length} deals · ${fmtK(mrrSum(lostLast))} last week</div>
       </div>
       <div class="kpi-card black">
         <div class="kpi-label">→ Champion / Onboarding</div>
-        <div class="kpi-value">${chmpThis.length + onbThis.length}</div>
-        <div class="kpi-prev">${chmpThis.length} champion · ${onbThis.length} onboarding</div>
+        <div class="kpi-value">${chmpThis.length + onbThis.length} ${delta(chmpThis.length + onbThis.length, chmpLast.length + onbLast.length)}</div>
+        <div class="kpi-sub">${chmpThis.length} champion · ${onbThis.length} onboarding</div>
+        <div class="kpi-prev">vs ${chmpLast.length + onbLast.length} last week</div>
       </div>
     </div>
 
@@ -1088,16 +1130,29 @@ function renderWoW() {
         </div>
       </div>
       <div class="chart-card">
-        <div class="chart-title">Stage Movements — Last 7 Days</div>
+        <div class="chart-title">Stage Movements — This Week vs Last Week</div>
+        <div style="display:flex;gap:16px;margin-bottom:10px;font-size:11px;color:var(--gray)">
+          <span><span style="display:inline-block;width:10px;height:8px;background:#374151;border-radius:2px;margin-right:4px"></span>This week</span>
+          <span><span style="display:inline-block;width:10px;height:8px;background:#D1D5DB;border-radius:2px;margin-right:4px"></span>Last week</span>
+        </div>
         ${movRows}
       </div>
+    </div>
+
+    <div class="chart-card" style="margin-bottom:20px">
+      <div class="chart-title">Week-over-Week Comparison — ${wkLabel} vs ${lastLabel}</div>
+      ${cmpRow('New Added',     newThis,  newLast,  true)}
+      ${cmpRow('Closed Won',    wonThis,  wonLast,  true)}
+      ${cmpRow('Closed Lost',   lostThis, lostLast, false)}
+      ${cmpRow('→ Champion',    chmpThis, chmpLast, true)}
+      ${cmpRow('→ Onboarding',  onbThis,  onbLast,  true)}
     </div>
 
     <div class="g2">
       <div class="table-wrap">
         <div class="section-head">
-          <span class="section-title">Closed Won — Last 7 Days</span>
-          <span class="section-badge">${wonThis.length} deal${wonThis.length!==1?'s':''}</span>
+          <span class="section-title">Closed Won — This Week</span>
+          <span class="section-badge">${wonThis.length} deal${wonThis.length!==1?'s':''} · ${fmtK(mrrSum(wonThis))}</span>
         </div>
         <div class="tscroll">
           <table>
@@ -1108,8 +1163,8 @@ function renderWoW() {
       </div>
       <div class="table-wrap">
         <div class="section-head">
-          <span class="section-title">New Deals Added — Last 7 Days</span>
-          <span class="section-badge">${newThis.length} deal${newThis.length!==1?'s':''}</span>
+          <span class="section-title">New Deals Added — This Week</span>
+          <span class="section-badge">${newThis.length} deal${newThis.length!==1?'s':''} · ${fmtK(mrrSum(newThis))}</span>
         </div>
         <div class="tscroll">
           <table>
