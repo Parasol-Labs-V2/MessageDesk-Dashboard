@@ -794,7 +794,7 @@ app.get('/api/pipeline-stats', async (req, res) => {
       if (stats[d.stageId]) {
         stats[d.stageId].count++;
         stats[d.stageId].totalLives   += d.lives;
-        stats[d.stageId].totalSavings += d.grossSavings;
+        stats[d.stageId].totalSavings += Math.max(0, d.grossSavings);
       }
     }
     res.json({ stages: Object.values(stats), updatedAt });

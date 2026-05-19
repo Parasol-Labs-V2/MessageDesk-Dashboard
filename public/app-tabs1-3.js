@@ -30,7 +30,7 @@ async function renderActivePipeline() {
       const stageName  = STAGE_NAMES[id];
       const stageDeals = active.filter(d => d.stageId === id);
       const stageLives = stageDeals.reduce((s, d) => s + d.lives, 0);
-      const stageSavings = stageDeals.reduce((s, d) => s + d.grossSavings, 0);
+      const stageSavings = stageDeals.reduce((s, d) => s + Math.max(0, d.grossSavings), 0);
       const isOpen = _expandedStage === id;
 
       const dealRows = stageDeals
