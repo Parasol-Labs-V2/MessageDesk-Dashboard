@@ -241,14 +241,21 @@ function buildDashboard(deals) {
     newByMonth[key] = (newByMonth[key]||0) + 1;
   }
 
-  const DAY = 86400000;
-  const now = Date.now();
-  const thisWeekCutoff = now - 7  * DAY;
-  const lastWeekCutoff = now - 14 * DAY;
-  const inThis = d => d && new Date(d).getTime() >= thisWeekCutoff;
-  const inLast = d => { if (!d) return false; const t = new Date(d).getTime(); return t >= lastWeekCutoff && t < thisWeekCutoff; };
+  // Calendar week boundaries: Mon 00:00 → Mon 00:00
+  const now2 = new Date();
+  const dow  = now2.getDay();
+  const daysFromMon = dow === 0 ? 6 : dow - 1;
+  const thisMon = new Date(now2); thisMon.setDate(now2.getDate() - daysFromMon); thisMon.setHours(0,0,0,0);
+  const lastMon = new Date(thisMon); lastMon.setDate(thisMon.getDate() - 7);
+  const nextMon = new Date(thisMon); nextMon.setDate(thisMon.getDate() + 7);
+  const fmtD = d => d.toISOString().split('T')[0];
+
+  const inThis = d => { if (!d) return false; const t = new Date(d).getTime(); return t >= thisMon.getTime() && t < nextMon.getTime(); };
+  const inLast = d => { if (!d) return false; const t = new Date(d).getTime(); return t >= lastMon.getTime() && t < thisMon.getTime(); };
 
   const changes = {
+    week_label:           `${fmtD(thisMon)} – ${fmtD(new Date(nextMon.getTime()-1))}`,
+    last_week_label:      `${fmtD(lastMon)} – ${fmtD(new Date(thisMon.getTime()-1))}`,
     new_this_week:        deals.filter(d => inThis(d.date_created)),
     new_last_week:        deals.filter(d => inLast(d.date_created)),
     won_this_week:        deals.filter(d => d.category === 'won'               && inThis(d.date_updated)),
@@ -256,7 +263,9 @@ function buildDashboard(deals) {
     lost_this_week:       deals.filter(d => d.category === 'lost'              && inThis(d.date_updated)),
     lost_last_week:       deals.filter(d => d.category === 'lost'              && inLast(d.date_updated)),
     onboarding_this_week: deals.filter(d => d.category === 'onboarding'        && inThis(d.date_updated)),
+    onboarding_last_week: deals.filter(d => d.category === 'onboarding'        && inLast(d.date_updated)),
     champion_this_week:   deals.filter(d => d.stage    === 'Champion Confirmed' && inThis(d.date_updated)),
+    champion_last_week:   deals.filter(d => d.stage    === 'Champion Confirmed' && inLast(d.date_updated)),
     active_updated:       deals.filter(d => d.category === 'active'            && inThis(d.date_updated)),
   };
 
