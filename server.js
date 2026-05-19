@@ -429,6 +429,18 @@ async function doRefresh() {
   // Overwrite hubspot_owner_id with fresh data from batch/read (bypasses stale search index)
   await refreshOwnerIds(raw);
 
+  // Diagnostic: log raw numeric field values for the first 5 deals to verify
+  // HubSpot is returning gross_savings_2024_deal and attribution_2024_lives
+  const sample5 = raw.slice(0, 5);
+  console.log('[doRefresh] raw field sample (first 5 deals):',
+    sample5.map(r => ({
+      id:   r.id,
+      name: r.properties && r.properties.dealname,
+      gross_savings_2024_deal: r.properties && r.properties.gross_savings_2024_deal,
+      attribution_2024_lives:  r.properties && r.properties.attribution_2024_lives,
+    }))
+  );
+
   // Collect unique unknown owner IDs and resolve them in parallel
   const unknownIds = [...new Set(
     raw.map(r => r.properties && r.properties.hubspot_owner_id).filter(id => id && !OWNER_MAP[id] && !_ownerCache[id])
